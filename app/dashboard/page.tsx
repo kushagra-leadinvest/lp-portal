@@ -1,47 +1,53 @@
 import { createClient } from "@/lib/supabase/server";
 
+function formatL(cr: number) {
+  const l = cr * 100;
+  return `₹${l % 1 === 0 ? l.toFixed(0) : l.toFixed(1)}L`;
+}
+
 export default async function DashboardPage() {
   const supabase = createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
 
+  const { data: investor } = await supabase
+    .from("investors")
+    .select("*")
+    .eq("email", user?.email ?? "")
+    .single();
+
+  const { data: commitments } = await supabase
+    .from("commitments")
+    .select(`
+      committed_amount_cr,
+      deployed_amount_cr,
+      investment_schemes (
+        company_name,
+        sector,
+        investment_date,
+        post_money_valuation_cr,
+        status
+      )
+    `)
+    .eq("investor_id", investor?.id ?? "");
+
+  const totalDeployed =
+    commitments?.reduce((sum, c) => sum + (c.deployed_amount_cr ?? 0), 0) ?? 0;
+
   return (
     <div>
       <div className="mb-8">
-        <h1 className="text-2xl font-semibold text-gray-900">Welcome back</h1>
+        <h1 className="text-2xl font-semibold text-gray-900">
+          Welcome back, {investor?.full_name ?? user?.email}
+        </h1>
         <p className="text-sm text-gray-500 mt-1">{user?.email}</p>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
         {[
-          { label: "Total Committed", value: "—" },
-          { label: "Total Drawn", value: "—" },
-          { label: "Current Value", value: "—" },
-          { label: "XIRR", value: "—" },
-        ].map((card) => (
-          <div
-            key={card.label}
-            className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm"
-          >
-            <p className="text-xs text-gray-500 font-medium uppercase tracking-wide">
-              {card.label}
-            </p>
-            <p className="text-2xl font-semibold text-gray-900 mt-2">
-              {card.value}
-            </p>
-          </div>
-        ))}
-      </div>
-
-      <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
-        <h2 className="text-base font-semibold text-gray-900 mb-4">
-          Portfolio Companies
-        </h2>
-        <div className="flex items-center justify-center h-32 text-gray-400 text-sm">
-          Portfolio data coming soon
-        </div>
-      </div>
-    </div>
-  );
-}
+          {
+            label: "Total Committed",
+            value: investor ? formatL(investor.committed_amount_cr) : "—",
+          },
+          {
