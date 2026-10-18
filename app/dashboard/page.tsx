@@ -19,17 +19,9 @@ export default async function DashboardPage() {
 
   const { data: commitments } = await supabase
     .from("commitments")
-    .select(`
-      committed_amount_cr,
-      deployed_amount_cr,
-      investment_schemes (
-        company_name,
-        sector,
-        investment_date,
-        post_money_valuation_cr,
-        status
-      )
-    `)
+    .select(
+      `committed_amount_cr, deployed_amount_cr, investment_schemes ( company_name, sector, investment_date, post_money_valuation_cr, status )`
+    )
     .eq("investor_id", investor?.id ?? "");
 
   const totalDeployed =
@@ -46,8 +38,6 @@ export default async function DashboardPage() {
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
         {[
-          {
-            label: "Total Committed",
-            value: investor ? formatL(investor.committed_amount_cr) : "—",
-          },
-          {
+          { label: "Total Committed", value: investor ? formatL(investor.committed_amount_cr) : "—" },
+          { label: "Total Drawn", value: investor ? formatL(investor.drawn_amount_cr) : "—" },
+          { label:
