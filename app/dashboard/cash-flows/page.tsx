@@ -7,7 +7,6 @@ import {
 } from "@/lib/queries";
 
 function short(n: number): string {
-  if (n >= 1_00_00_000) return `₹${(n / 1_00_00_000).toFixed(2)} Cr`;
   if (n >= 1_00_000) return `₹${(n / 1_00_000).toFixed(2)} L`;
   return new Intl.NumberFormat("en-IN", {
     style: "currency",
@@ -55,11 +54,11 @@ function CashFlowRow({ flow }: { flow: CashFlow }) {
 
 function CapitalCallRow({ call }: { call: CapitalCall }) {
   const statusColor =
-    call.status === "pending"
+    call.status === "upcoming"
       ? "bg-amber-50 text-amber-700"
-      : call.status === "paid"
+      : call.status === "called"
       ? "bg-green-50 text-green-700"
-      : "bg-gray-100 text-gray-500";
+      : "bg-red-50 text-red-600";
 
   return (
     <tr className="border-t border-gray-100 hover:bg-gray-50 transition-colors">
