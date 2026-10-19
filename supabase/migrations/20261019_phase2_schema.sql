@@ -227,3 +227,55 @@ AS $$
     SELECT 1 FROM public.investors WHERE email = check_email
   );
 $$;
+-- ============================================================
+-- handle_new_auth_user trigger (fixed: was referencing wrong column)
+-- ============================================================
+CREATE OR REPLACE FUNCTION public.handle_new_auth_user()
+RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER
+AS $$
+BEGIN
+  UPDATE public.investors
+  SET auth_user_id = NEW.id
+  WHERE email = NEW.email
+    AND auth_user_id IS NULL;
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
+CREATE TRIGGER on_auth_user_created
+  AFTER INSERT ON auth.users
+  FOR EACH ROW EXECUTE FUNCTION public.handle_new_auth_user();
+
+-- ============================================================
+-- GRANTs for authenticated and anon roles
+-- ============================================================
+GRANT USAGE ON SCHEMA public TO authenticated, anon;
+
+GRANT SELECT ON public.investors TO authenticated;
+GRANT SELECT ON public.schemes TO authenticated;
+GRANT SELECT ON public.investments TO authenticated;
+GRANT SELECT ON public.cash_flows TO authenticated;
+GRANT SELECT ON public.capital_calls TO authenticated;
+GRANT SELECT ON public.documents TO authenticated;
+GRANT SELECT ON public.updates TO authenticated;
+GRANT SELECT ON public.audit_log TO authenticated;
+GRANT SELECT ON public.admin_roles TO authenticated;
+GRANT INSERT, UPDATE, DELETE ON public.investors TO authenticated;
+GRANT INSERT, UPDATE, DELETE ON public.schemes TO authenticated;
+GRANT INSERT, UPDATE, DELETE ON public.investments TO authenticated;
+GRANT INSERT, UPDATE, DELETE ON public.cash_flows TO authenticated;
+GRANT INSERT, UPDATE, DELETE ON public.capital_calls TO authenticated;
+GRANT INSERT, UPDATE, DELETE ON public.documents TO authenticated;
+GRANT INSERT, UPDATE, DELETE ON public.updates TO authenticated;
+
+GRANT SELECT ON public.investors TO anon;
+GRANT SELECT ON public.schemes TO anon;
+GRANT SELECT ON public.investments TO anon;
+GRANT SELECT ON public.cash_flows TO anon;
+GRANT SELECT ON public.capital_calls TO anon;
+GRANT SELECT ON public.documents TO anon;
+GRANT SELECT ON public.updates TO anon;
+GRANT SELECT ON public.audit_log TO anon;
+GRANT SELECT ON public.admin_roles TO anon;
