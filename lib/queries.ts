@@ -88,7 +88,7 @@ export async function getInvestments(
       "id, investor_id, scheme_id, committed_amount, deployed_amount, current_value, moic, ownership_pct, schemes(id, name, sector, stage)"
     )
     .order("committed_amount", { ascending: false });
-  return (data ?? []) as Investment[];
+    return (data ?? []) as unknown as Investment[];
 }
 
 export async function getUpcomingCapitalCalls(
