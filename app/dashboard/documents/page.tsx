@@ -1,3 +1,4 @@
+"use client";
 import { AS_OF_DATE, DOCUMENTS, type PortfolioDocument } from "@/lib/dummy-data";
 
 const CATEGORY_LABELS: Record<PortfolioDocument["category"], string> = {
