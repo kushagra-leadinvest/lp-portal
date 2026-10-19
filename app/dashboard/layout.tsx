@@ -1,88 +1,215 @@
-import { createClient } from "@/lib/supabase/server";
-import { redirect } from "next/navigation";
-import LogoutButton from "@/components/LogoutButton";
+"use client";
 
-export default async function DashboardLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
-  const supabase = createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+import { createClient } from "@/lib/supabase/client";
+import { useRouter } from "next/navigation";
+import { AS_OF_DATE, LP_NAME } from "@/lib/dummy-data";
 
-  if (!user) {
-    redirect("/login");
-  }
+const NAV = [
+  {
+    label: "Portfolio",
+    href: "/dashboard",
+    icon: (
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <rect x="2" y="3" width="20" height="14" rx="2" />
+        <path d="M8 21h8M12 17v4" />
+      </svg>
+    ),
+  },
+  {
+    label: "Cash Flows",
+    href: "/dashboard/cash-flows",
+    icon: (
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <line x1="12" y1="1" x2="12" y2="23" />
+        <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
+      </svg>
+    ),
+  },
+  {
+    label: "Documents",
+    href: "/dashboard/documents",
+    icon: (
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+        <polyline points="14 2 14 8 20 8" />
+      </svg>
+    ),
+  },
+  {
+    label: "Updates",
+    href: "/dashboard/updates",
+    icon: (
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+      </svg>
+    ),
+  },
+  {
+    label: "Capital Account",
+    href: "/dashboard/capital-account",
+    icon: (
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M9 11l3 3L22 4" />
+        <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
+      </svg>
+    ),
+  },
+];
 
-  const { data: investor } = await supabase
-    .from("investors")
-    .select("full_name, email")
-    .eq("email", user.email ?? "")
-    .single();
+const BOTTOM_NAV = [
+  {
+    label: "Profile",
+    href: "/dashboard/profile",
+    disabled: true,
+    icon: (
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+        <circle cx="12" cy="7" r="4" />
+      </svg>
+    ),
+  },
+  {
+    label: "Support",
+    href: "/dashboard/support",
+    disabled: false,
+    icon: (
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <circle cx="12" cy="12" r="10" />
+        <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" />
+        <line x1="12" y1="17" x2="12.01" y2="17" />
+      </svg>
+    ),
+  },
+];
 
-  const initials = investor?.full_name
-    ? investor.full_name
-        .split(" ")
-        .map((n: string) => n[0])
-        .join("")
-        .toUpperCase()
-        .slice(0, 2)
-    : "LP";
+export default function DashboardLayout({ children }: { children: React.ReactNode }) {
+  const pathname = usePathname();
+  const router = useRouter();
+
+  const isActive = (href: string) => {
+    if (href === "/dashboard") {
+      return pathname === "/dashboard" || pathname.startsWith("/dashboard/portfolio");
+    }
+    return pathname.startsWith(href);
+  };
+
+  const handleSignOut = async () => {
+    const supabase = createClient();
+    await supabase.auth.signOut();
+    router.push("/login");
+  };
 
   return (
-    <div className="min-h-screen bg-gray-50 flex">
-      <aside className="w-64 bg-white border-r border-gray-200 flex flex-col fixed h-full">
-        <div className="px-6 py-5 border-b border-gray-100">
-          <div className="flex items-center gap-2">
-            <div className="w-7 h-7 rounded bg-amber-700 flex items-center justify-center">
-              <span className="text-white text-xs font-bold">LI</span>
-            </div>
-            <span className="text-sm font-semibold text-gray-900">Lead Invest</span>
-          </div>
-          <p className="text-xs text-gray-400 mt-1 ml-9">Investor Portal</p>
+    <div className="flex h-screen bg-gray-50 overflow-hidden">
+      {/* ── Sidebar ────────────────────────────────────────────── */}
+      <aside className="w-56 flex-shrink-0 flex flex-col bg-white border-r border-gray-100 print:hidden">
+        {/* Logo */}
+        <div className="px-5 py-5 border-b border-gray-100">
+          <p className="text-sm font-bold text-gray-900 tracking-tight">Lead Invest</p>
+          <p className="text-[10px] text-gray-400 mt-0.5">Investor Portal</p>
         </div>
-        <nav className="flex-1 px-3 py-4">
-          <a
-            href="/dashboard"
-            className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-gray-900 bg-gray-100"
-          >
-            <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
-            </svg>
-            Portfolio
-          </a>
-          <a
-            href="/dashboard/documents"
-            className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-gray-500 hover:text-gray-900 hover:bg-gray-50 mt-1"
-          >
-            <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-            </svg>
-            Documents
-          </a>
+
+        {/* Main nav */}
+        <nav className="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto">
+          {NAV.map((item) => (
+            <Link
+              key={item.href}
+              href={item.href}
+              className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors ${
+                isActive(item.href)
+                  ? "bg-[#8B1A1A]/8 text-[#8B1A1A] font-medium"
+                  : "text-gray-500 hover:text-gray-800 hover:bg-gray-50"
+              }`}
+            >
+              <span className={isActive(item.href) ? "text-[#8B1A1A]" : "text-gray-400"}>
+                {item.icon}
+              </span>
+              {item.label}
+            </Link>
+          ))}
+
+          {/* Divider */}
+          <div className="my-2 border-t border-gray-100" />
+
+          {/* Bottom nav items */}
+          {BOTTOM_NAV.map((item) =>
+            item.disabled ? (
+              <span
+                key={item.href}
+                className="flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm text-gray-300 cursor-not-allowed select-none"
+                title="Coming soon"
+              >
+                <span className="text-gray-300">{item.icon}</span>
+                {item.label}
+              </span>
+            ) : (
+              <Link
+                key={item.href}
+                href={item.href}
+                className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors ${
+                  isActive(item.href)
+                    ? "bg-[#8B1A1A]/8 text-[#8B1A1A] font-medium"
+                    : "text-gray-500 hover:text-gray-800 hover:bg-gray-50"
+                }`}
+              >
+                <span className={isActive(item.href) ? "text-[#8B1A1A]" : "text-gray-400"}>
+                  {item.icon}
+                </span>
+                {item.label}
+              </Link>
+            )
+          )}
         </nav>
-        <div className="px-4 py-4 border-t border-gray-100">
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-full bg-amber-100 flex items-center justify-center flex-shrink-0">
-              <span className="text-amber-800 text-xs font-semibold">{initials}</span>
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-gray-900 truncate">
-                {investor?.full_name ?? user.email}
-              </p>
-              <p className="text-xs text-gray-400 truncate">{user.email}</p>
-            </div>
-          </div>
-          <div className="mt-3">
-            <LogoutButton />
-          </div>
+
+        {/* Sign out */}
+        <div className="px-3 pb-4 border-t border-gray-100 pt-3">
+          <button
+            onClick={handleSignOut}
+            className="flex items-center gap-2.5 px-3 py-2 w-full rounded-lg text-sm text-gray-400 hover:text-gray-700 hover:bg-gray-50 transition-colors"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+              <polyline points="16 17 21 12 16 7" />
+              <line x1="21" y1="12" x2="9" y2="12" />
+            </svg>
+            Sign out
+          </button>
         </div>
       </aside>
-      <main className="flex-1 ml-64 p-8">
-        {children}
-      </main>
+
+      {/* ── Main area ──────────────────────────────────────────── */}
+      <div className="flex-1 flex flex-col overflow-hidden">
+        {/* Top bar */}
+        <header className="h-12 flex-shrink-0 flex items-center justify-between px-6 bg-white border-b border-gray-100 print:hidden">
+          <p className="text-xs text-gray-400">Data as of <span className="font-medium text-gray-600">{AS_OF_DATE}</span></p>
+
+          <div className="flex items-center gap-3">
+            {/* Notifications bell */}
+            <button className="relative p-1.5 text-gray-400 hover:text-gray-700 transition-colors rounded-lg hover:bg-gray-50">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
+                <path d="M13.73 21a2 2 0 0 1-3.46 0" />
+              </svg>
+              <span className="absolute top-0.5 right-0.5 w-3.5 h-3.5 bg-[#8B1A1A] text-white text-[8px] font-bold rounded-full flex items-center justify-center">1</span>
+            </button>
+
+            {/* Profile chip */}
+            <div className="flex items-center gap-2 pl-2 border-l border-gray-100">
+              <div className="w-6 h-6 rounded-full bg-[#8B1A1A] text-white text-[10px] font-semibold flex items-center justify-center">
+                {LP_NAME.charAt(0)}
+              </div>
+              <span className="text-xs text-gray-600 font-medium hidden sm:block">{LP_NAME.split(" ")[0]}</span>
+            </div>
+          </div>
+        </header>
+
+        {/* Page content */}
+        <main className="flex-1 overflow-y-auto">
+          {children}
+        </main>
+      </div>
     </div>
   );
 }
