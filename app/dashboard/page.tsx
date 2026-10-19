@@ -166,7 +166,7 @@ export default async function DashboardPage() {
       getInvestor(supabase),
       getInvestments(supabase),
       getUpcomingCapitalCalls(supabase),
-      getRecentUpdates(supabase, 3),
+      getRecentUpdates(supabase),
     ]);
 
   const stats = aggregateInvestments(investments);
