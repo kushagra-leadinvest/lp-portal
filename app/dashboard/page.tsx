@@ -4,6 +4,18 @@ import { getPortfolioData } from "@/lib/queries";
 import { AS_OF_DATE } from "@/lib/constants";
 import { inr, short, aggregate, formatDate } from "@/lib/format";
 
+type SchemeRef = { id: string; name: string; sector: string; entry_date: string };
+type InvRow = {
+  id: string;
+  committed: string | number;
+  deployed: string | number;
+  distributions: number;
+  current_value: string | number | null;
+  moic: string | number | null;
+  schemes: SchemeRef[] | null;
+};
+type CallRow = { id: string; amount: string | number; due_date: string | null; schemes: { id: string; name: string }[] | null };
+
 function CommitmentBar({ committed, deployed }: { committed: number; deployed: number }) {
   const undrawn = committed - deployed;
   const pct = committed > 0 ? (deployed / committed) * 100 : 0;
@@ -25,7 +37,11 @@ function CommitmentBar({ committed, deployed }: { committed: number; deployed: n
 export default async function DashboardPage() {
   const data = await getPortfolioData();
   if (!data) redirect("/login");
-  const { investments, capitalCalls, recentUpdates } = data;
+
+  const investments = data.investments as unknown as InvRow[];
+  const capitalCalls = data.capitalCalls as unknown as CallRow[];
+  const recentUpdates = data.recentUpdates;
+
   const stats = aggregate(investments);
 
   return (
@@ -90,7 +106,7 @@ export default async function DashboardPage() {
               <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
             </svg>
             <p className="text-sm text-gray-400">Quarterly value history</p>
-            <p className="text-xs text-gray-300 mt-1">Will appear here after the first quarter-end. Current estimated value shown above.</p>
+            <p className="text-xs text-gray-300 mt-1">Will appear here after the first quarter-end.</p>
           </div>
         </div>
       </section>
@@ -100,7 +116,7 @@ export default async function DashboardPage() {
           <h2 className="text-sm font-semibold text-gray-700 mb-3">Upcoming capital calls</h2>
           <div className="space-y-2">
             {capitalCalls.map((call) => {
-              const scheme = call.schemes as { id: string; name: string } | null;
+              const scheme = call.schemes?.[0] ?? null;
               return (
                 <div key={call.id} className="bg-white border border-gray-200 rounded-xl px-5 py-4 flex items-center justify-between gap-4">
                   <div>
@@ -159,7 +175,7 @@ export default async function DashboardPage() {
                 </thead>
                 <tbody className="divide-y divide-gray-50">
                   {investments.map((inv) => {
-                    const scheme = inv.schemes as { id: string; name: string; sector: string; entry_date: string } | null;
+                    const scheme = inv.schemes?.[0] ?? null;
                     const currentValue = inv.current_value !== null ? Number(inv.current_value) : null;
                     const deployed = Number(inv.deployed);
                     const committed = Number(inv.committed);
@@ -224,7 +240,7 @@ export default async function DashboardPage() {
 
       <footer className="mt-auto px-8 py-6 border-t border-gray-100">
         <p className="text-[11px] text-gray-400 leading-relaxed max-w-2xl">
-          All valuations are unaudited estimates as of {AS_OF_DATE} (last quarter-end) and are subject to change. Past performance does not guarantee future results. This portal is for registered Lead Invest LPs only.
+          All valuations are unaudited estimates as of {AS_OF_DATE} and are subject to change. Past performance does not guarantee future results. This portal is for registered Lead Invest LPs only.
         </p>
         <p className="text-[11px] text-gray-400 mt-2">
           Questions? <a href="mailto:kushagra@leadinvest.in" className="text-[#8B1A1A] hover:underline">kushagra@leadinvest.in</a>
