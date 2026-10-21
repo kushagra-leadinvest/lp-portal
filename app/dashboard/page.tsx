@@ -35,12 +35,35 @@ function CommitmentBar({ committed, deployed }: { committed: number; deployed: n
 }
 
 export default async function DashboardPage() {
-  const data = await getPortfolioData();
-  if (!data) redirect("/login");
+  const result = await getPortfolioData();
 
-  const investments = data.investments as unknown as InvRow[];
-  const capitalCalls = data.capitalCalls as unknown as CallRow[];
-  const recentUpdates = data.recentUpdates;
+  // Only redirect to login if genuinely not authenticated
+  if (result.status === "no_session") redirect("/login");
+
+  // Authenticated but no LP record yet — show a holding screen instead of looping to login
+  if (result.status === "no_record") {
+    return (
+      <div className="min-h-full flex flex-col items-center justify-center px-8 py-16 text-center">
+        <svg className="mb-4 text-gray-200" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+          <rect x="2" y="7" width="20" height="14" rx="2" />
+          <path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2" />
+        </svg>
+        <h2 className="text-lg font-semibold text-gray-700 mb-2">Portfolio data not set up yet</h2>
+        <p className="text-sm text-gray-400 max-w-sm">
+          Your account is active, but your LP portfolio record hasn&apos;t been linked yet.
+          Please contact{" "}
+          <a href="mailto:kushagra@leadinvest.in" className="text-[#8B1A1A] hover:underline">
+            kushagra@leadinvest.in
+          </a>{" "}
+          to get access.
+        </p>
+      </div>
+    );
+  }
+
+  const investments = result.investments as unknown as InvRow[];
+  const capitalCalls = result.capitalCalls as unknown as CallRow[];
+  const recentUpdates = result.recentUpdates;
 
   const stats = aggregate(investments);
   const gainPct = stats.totalDeployed > 0 ? (stats.totalGain / stats.totalDeployed) * 100 : 0;
@@ -145,7 +168,7 @@ export default async function DashboardPage() {
           <p className="text-sm text-gray-400 py-4 text-center">No updates yet.</p>
         ) : (
           <div className="space-y-2">
-            {recentUpdates.map((u) => (
+            {(recentUpdates as { id: string; title: string; content: string }[]).map((u) => (
               <div key={u.id} className="flex items-start gap-3 bg-white border border-gray-200 rounded-lg px-4 py-3">
                 <span className="mt-1 w-1.5 h-1.5 rounded-full bg-[#8B1A1A] flex-shrink-0" />
                 <div className="min-w-0">
