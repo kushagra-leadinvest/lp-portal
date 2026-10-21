@@ -21,7 +21,7 @@ export async function GET(request: Request) {
           getAll() {
             return cookieStore.getAll();
           },
-          setAll(cookiesToSet) {
+          setAll(cookiesToSet: { name: string; value: string; options: Record<string, unknown> }[]) {
             // Set cookies directly on the redirect response
             cookiesToSet.forEach(({ name, value, options }) => {
               redirectResponse.cookies.set(name, value, options);
