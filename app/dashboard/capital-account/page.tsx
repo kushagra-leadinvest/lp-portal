@@ -1,139 +1,215 @@
-import { createClient } from "@/lib/supabase/server";
-import {
-  getInvestor,
-  getInvestments,
-  getCashFlows,
-  aggregateInvestments,
-  type CashFlow,
-} from "@/lib/queries";
-
-function short(n: number): string {
-  if (n >= 1_00_000) return `₹${(n / 1_00_000).toFixed(2)} L`;
-  return new Intl.NumberFormat("en-IN", {
-    style: "currency",
-    currency: "INR",
-    maximumFractionDigits: 0,
-  }).format(n);
-}
-
-function fmtDate(d: string): string {
-  return new Date(d).toLocaleDateString("en-IN", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-  });
-}
-
-function Row({ label, value, bold }: { label: string; value: string; bold?: boolean }) {
-  return (
-    <div className={`flex justify-between py-3 border-t border-gray-100 first:border-t-0 ${bold ? "font-semibold" : ""}`}>
-      <span className={`text-sm ${bold ? "text-gray-900" : "text-gray-600"}`}>{label}</span>
-      <span className={`text-sm ${bold ? "text-gray-900" : "text-gray-700"}`}>{value}</span>
-    </div>
-  );
-}
-
-function CashFlowRow({ flow }: { flow: CashFlow }) {
-  const isCall = flow.direction === "call";
-  return (
-    <div className="flex items-center justify-between py-3 border-t border-gray-100 first:border-t-0">
-      <div>
-        <p className="text-sm text-gray-900">{flow.schemes.name}</p>
-        <p className="text-xs text-gray-400">{fmtDate(flow.date)}</p>
-      </div>
-      <span className={`text-sm font-medium ${isCall ? "text-gray-900" : "text-green-700"}`}>
-        {isCall ? `-${short(flow.amount)}` : `+${short(flow.amount)}`}
-      </span>
-    </div>
-  );
-}
+import { redirect } from "next/navigation";
+import { getCapitalAccountData } from "@/lib/queries";
+import { AS_OF_DATE, FUND_NAME } from "@/lib/constants";
+import { inr, short, aggregate, formatDate } from "@/lib/format";
+import DownloadButton from "./download-button";
 
 export default async function CapitalAccountPage() {
-  const supabase = createClient();
-  const [investor, investments, cashFlows] = await Promise.all([
-    getInvestor(supabase),
-    getInvestments(supabase),
-    getCashFlows(supabase),
-  ]);
+  const data = await getCapitalAccountData();
+  if (!data) redirect("/login");
 
-  const stats = aggregateInvestments(investments);
-  const today = new Date().toLocaleDateString("en-IN", {
-    day: "numeric",
-    month: "long",
-    year: "numeric",
+  const { investor, investments, cashFlows } = data;
+  const stats = aggregate(investments);
+
+  const sortedFlows = [...cashFlows].sort((a, b) => a.date.localeCompare(b.date));
+  let runningBalance = 0;
+  const flowsWithBalance = sortedFlows.map((cf) => {
+    const scheme = (cf as unknown as { schemes: { name: string } | null }).schemes;
+    if (cf.direction === "call") runningBalance += Number(cf.amount);
+    else runningBalance -= Number(cf.amount);
+    return { ...cf, schemeName: scheme?.name ?? "—", balance: runningBalance };
   });
 
-  const totalCalled = cashFlows
-    .filter((f) => f.direction === "call")
-    .reduce((s, f) => s + f.amount, 0);
-  const totalDistributed = cashFlows
-    .filter((f) => f.direction === "distribution")
-    .reduce((s, f) => s + f.amount, 0);
-
   return (
-    <div className="p-6 space-y-6 max-w-2xl mx-auto">
-      <div className="flex items-start justify-between">
-        <div>
-          <h1 className="text-xl font-semibold text-gray-900">Capital Account</h1>
-          <p className="text-sm text-gray-400 mt-0.5">As of {today}</p>
+    <div className="min-h-full flex flex-col">
+      <div className="px-8 pt-7 pb-6 print:hidden">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-xl font-semibold text-gray-900">Capital Account Statement</h1>
+            <p className="text-xs text-gray-400 mt-0.5">One-click PDF for your records · As of {AS_OF_DATE}</p>
+          </div>
+          <DownloadButton />
         </div>
-        <button
-          disabled
-          className="text-sm px-4 py-2 border border-gray-200 rounded-lg text-gray-400 cursor-not-allowed"
-          title="PDF download coming soon"
-        >
-          Download PDF
-        </button>
       </div>
 
-      {/* Statement */}
-      <div className="bg-white rounded-xl border border-gray-200 px-5 py-2">
-        <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide pt-3 pb-2">
-          Investor
-        </p>
-        <Row label="Name" value={investor?.name ?? "—"} />
-        <Row label="Email" value={investor?.email ?? "—"} />
+      <div className="px-8 pb-12 max-w-3xl mx-auto w-full print:px-0 print:max-w-none print:mx-0">
+        <div className="hidden print:block mb-8">
+          <div className="flex items-start justify-between border-b-2 border-gray-900 pb-4 mb-6">
+            <div>
+              <p className="text-2xl font-bold text-gray-900">Lead Invest</p>
+              <p className="text-sm text-gray-500 mt-0.5">Capital Account Statement</p>
+            </div>
+            <div className="text-right">
+              <p className="text-xs text-gray-500">UNAUDITED ESTIMATE</p>
+              <p className="text-xs text-gray-400 mt-0.5">As of {AS_OF_DATE}</p>
+            </div>
+          </div>
+        </div>
 
-        <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide pt-4 pb-2">
-          Commitment
-        </p>
-        <Row label="Total Committed" value={short(stats.totalCommitted)} />
-        <Row label="Capital Called" value={short(totalCalled)} />
-        <Row label="Undrawn Commitment" value={short(stats.undrawn)} />
+        <section className="bg-white border border-gray-200 rounded-xl px-6 py-5 mb-5 print:border-gray-300 print:rounded-none">
+          <div className="grid grid-cols-2 gap-6">
+            <div>
+              <p className="text-[11px] font-medium text-gray-400 uppercase tracking-wider mb-1">LP Name</p>
+              <p className="text-sm font-semibold text-gray-900">{investor.full_name}</p>
+            </div>
+            <div>
+              <p className="text-[11px] font-medium text-gray-400 uppercase tracking-wider mb-1">Fund</p>
+              <p className="text-sm font-semibold text-gray-900">{FUND_NAME}</p>
+            </div>
+            <div>
+              <p className="text-[11px] font-medium text-gray-400 uppercase tracking-wider mb-1">Statement date</p>
+              <p className="text-sm text-gray-700">{AS_OF_DATE}</p>
+            </div>
+            <div>
+              <p className="text-[11px] font-medium text-gray-400 uppercase tracking-wider mb-1">Statement type</p>
+              <p className="text-sm text-gray-700">Unaudited estimate</p>
+            </div>
+          </div>
+        </section>
 
-        <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide pt-4 pb-2">
-          Portfolio
-        </p>
-        <Row label="Capital Deployed" value={short(stats.totalDeployed)} />
-        <Row label="Current Value" value={short(stats.totalCurrentValue)} bold />
-        <Row label="Unrealised Gain / (Loss)" value={short(stats.totalGain)} />
-        <Row label="MOIC" value={`${stats.overallMoic.toFixed(2)}x`} />
+        <section className="mb-5">
+          <h2 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">Account summary</h2>
+          <div className="bg-white border border-gray-200 rounded-xl overflow-hidden print:rounded-none print:border-gray-300">
+            {investments.length === 0 ? (
+              <p className="px-4 py-6 text-sm text-gray-400 text-center">
+                No investment data yet. Data will appear here once populated by the fund manager.
+              </p>
+            ) : (
+              <table className="w-full text-sm">
+                <tbody>
+                  <StatRow label="Total commitment" value={inr(stats.totalCommitted)} />
+                  <StatRow label="Total capital called" value={inr(stats.totalDeployed)} />
+                  <StatRow label="Remaining undrawn" value={inr(stats.undrawn)} />
+                  <StatRow label="Total distributions" value={inr(stats.totalDistributions)} />
+                  <StatRow label="Estimated current value" value={inr(stats.totalCurrentValue)} highlight />
+                  <StatRow label="Unrealised gain / (loss)" value={`${stats.totalGain >= 0 ? "+" : ""}${inr(stats.totalGain)}`} />
+                  <StatRow label="MOIC" value={`${stats.overallMoic.toFixed(2)}x`} />
+                  <StatRow label="DPI" value={`${stats.overallDpi.toFixed(2)}x`} />
+                </tbody>
+              </table>
+            )}
+          </div>
+        </section>
 
-        <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide pt-4 pb-2">
-          Distributions
-        </p>
-        <Row label="Total Distributed" value={short(totalDistributed)} />
-        <Row label="DPI" value="0.00x" />
-      </div>
+        {investments.length > 0 && (
+          <section className="mb-5">
+            <h2 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">Holdings</h2>
+            <div className="bg-white border border-gray-200 rounded-xl overflow-hidden print:rounded-none print:border-gray-300">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-gray-100 bg-gray-50/60">
+                    <Th align="left">Company</Th>
+                    <Th>Committed</Th>
+                    <Th>Deployed</Th>
+                    <Th>Current value</Th>
+                    <Th>MOIC</Th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-50">
+                  {investments.map((inv) => {
+                    const scheme = (inv as unknown as { schemes: { name: string; sector: string } | null }).schemes;
+                    const currentValue = inv.current_value !== null ? Number(inv.current_value) : null;
+                    const deployed = Number(inv.deployed);
+                    const moic = inv.moic !== null
+                      ? Number(inv.moic)
+                      : (currentValue !== null && deployed > 0 ? currentValue / deployed : 0);
+                    return (
+                      <tr key={inv.id}>
+                        <td className="px-4 py-3">
+                          <p className="text-sm font-medium text-gray-800">{scheme?.name ?? "—"}</p>
+                          <p className="text-[11px] text-gray-400">{scheme?.sector ?? ""}</p>
+                        </td>
+                        <td className="px-4 py-3 text-right font-mono text-xs text-gray-600">{inr(Number(inv.committed))}</td>
+                        <td className="px-4 py-3 text-right font-mono text-xs text-gray-600">{inr(deployed)}</td>
+                        <td className="px-4 py-3 text-right font-mono text-xs text-gray-700 font-medium">
+                          {currentValue !== null
+                            ? inr(currentValue)
+                            : <span className="text-gray-400 italic font-sans text-[11px]">Valuation pending</span>
+                          }
+                        </td>
+                        <td className="px-4 py-3 text-right text-xs font-semibold text-gray-700">{moic.toFixed(2)}x</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+                <tfoot>
+                  <tr className="border-t-2 border-gray-200 bg-gray-50/80 font-semibold">
+                    <td className="px-4 py-3 text-xs text-gray-700">Total</td>
+                    <td className="px-4 py-3 text-right font-mono text-xs text-gray-700">{inr(stats.totalCommitted)}</td>
+                    <td className="px-4 py-3 text-right font-mono text-xs text-gray-700">{inr(stats.totalDeployed)}</td>
+                    <td className="px-4 py-3 text-right font-mono text-xs text-gray-700">{inr(stats.totalCurrentValue)}</td>
+                    <td className="px-4 py-3 text-right text-xs font-semibold text-gray-700">{stats.overallMoic.toFixed(2)}x</td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          </section>
+        )}
 
-      {/* Cash flow history */}
-      {cashFlows.length > 0 && (
-        <div className="bg-white rounded-xl border border-gray-200 px-5 py-2">
-          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide pt-3 pb-2">
-            Transaction History
+        <section className="mb-5">
+          <h2 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">Transaction history</h2>
+          <div className="bg-white border border-gray-200 rounded-xl overflow-hidden print:rounded-none print:border-gray-300">
+            {flowsWithBalance.length === 0 ? (
+              <p className="px-4 py-6 text-sm text-gray-400 text-center">No transactions yet.</p>
+            ) : (
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-gray-100 bg-gray-50/60">
+                    <Th align="left">Date</Th>
+                    <Th align="left">Company</Th>
+                    <Th align="left">Type</Th>
+                    <Th>Amount</Th>
+                    <Th>Running balance</Th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-50">
+                  {flowsWithBalance.map((cf) => (
+                    <tr key={cf.id}>
+                      <td className="px-4 py-2.5 text-xs text-gray-500 font-mono">{formatDate(cf.date)}</td>
+                      <td className="px-4 py-2.5 text-xs font-medium text-gray-800">{cf.schemeName}</td>
+                      <td className="px-4 py-2.5 text-xs text-gray-500">
+                        {cf.direction === "call" ? "Capital call" : "Distribution"}
+                      </td>
+                      <td className="px-4 py-2.5 text-right font-mono text-xs text-gray-700">
+                        {cf.direction === "distribution" && "+"}
+                        {inr(Number(cf.amount))}
+                      </td>
+                      <td className="px-4 py-2.5 text-right font-mono text-xs text-gray-600">
+                        {inr(cf.balance)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        </section>
+
+        <section className="bg-gray-50 border border-gray-200 rounded-xl px-5 py-4 print:bg-white print:rounded-none print:border-t print:border-gray-300 print:mt-6">
+          <p className="text-[11px] text-gray-500 leading-relaxed">
+            <strong>Important:</strong> This capital account statement is an unaudited estimate prepared by Lead Invest for informational purposes only. Valuations are as of {AS_OF_DATE} and are based on the most recent information available. Past performance does not guarantee future results. This document does not constitute financial or tax advice. For audited statements, capital account details, or tax documents, contact your fund manager. Fees, carry, and tax treatment are subject to compliance and CA review before real data is published.
           </p>
-          {cashFlows.map((f) => (
-            <CashFlowRow key={f.id} flow={f} />
-          ))}
-        </div>
-      )}
-
-      <p className="text-xs text-gray-400">
-        This statement is for informational purposes only. Valuations marked
-        "pending" reflect cost basis. For official statements, contact Lead
-        Invest. Fees, carry, and tax details are subject to compliance review
-        before inclusion.
-      </p>
+        </section>
+      </div>
     </div>
+  );
+}
+
+function StatRow({ label, value, highlight }: { label: string; value: string; highlight?: boolean }) {
+  return (
+    <tr className={`border-b border-gray-50 last:border-0 ${highlight ? "bg-[#8B1A1A]/5" : ""}`}>
+      <td className="px-4 py-3 text-xs text-gray-600">{label}</td>
+      <td className={`px-4 py-3 text-right font-mono text-xs font-medium ${highlight ? "text-[#8B1A1A]" : "text-gray-700"}`}>
+        {value}
+      </td>
+    </tr>
+  );
+}
+
+function Th({ children, align = "right" }: { children: React.ReactNode; align?: "left" | "right" }) {
+  return (
+    <th className={`px-4 py-2.5 text-[11px] font-medium text-gray-500 uppercase tracking-wider ${align === "right" ? "text-right" : "text-left"}`}>
+      {children}
+    </th>
   );
 }
