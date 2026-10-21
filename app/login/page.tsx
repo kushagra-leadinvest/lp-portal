@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import Image from "next/image";
 
@@ -11,7 +10,6 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [mode, setMode] = useState<"login" | "set-password">("login");
-  const router = useRouter();
 
   useEffect(() => {
     const hash = window.location.hash;
@@ -45,7 +43,7 @@ export default function LoginPage() {
       setError(error.message);
       setLoading(false);
     } else {
-      router.replace("/dashboard");
+      window.location.href = "/dashboard";
     }
   };
 
@@ -61,7 +59,7 @@ export default function LoginPage() {
       setError("Invalid email or password.");
       setLoading(false);
     } else {
-      router.replace("/dashboard");
+      window.location.href = "/dashboard";
     }
   };
 
