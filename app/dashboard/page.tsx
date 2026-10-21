@@ -43,6 +43,8 @@ export default async function DashboardPage() {
   const recentUpdates = data.recentUpdates;
 
   const stats = aggregate(investments);
+  const gainPct = stats.totalDeployed > 0 ? (stats.totalGain / stats.totalDeployed) * 100 : 0;
+  const drawdownPct = stats.totalCommitted > 0 ? (stats.totalDeployed / stats.totalCommitted) * 100 : 0;
 
   return (
     <div className="min-h-full flex flex-col">
@@ -67,7 +69,7 @@ export default async function DashboardPage() {
                 value={short(stats.totalCurrentValue)}
                 sub={
                   <span className={stats.totalGain >= 0 ? "text-green-500" : "text-red-500"}>
-                    {stats.totalGain >= 0 ? "+" : ""}{short(stats.totalGain)} ({stats.gainPct >= 0 ? "+" : ""}{stats.gainPct.toFixed(1)}%)
+                    {stats.totalGain >= 0 ? "+" : ""}{short(stats.totalGain)} ({gainPct >= 0 ? "+" : ""}{gainPct.toFixed(1)}%)
                   </span>
                 }
                 highlight
@@ -77,10 +79,10 @@ export default async function DashboardPage() {
             <div className="bg-white border border-gray-200 rounded-xl px-5 py-4 mb-4">
               <div className="flex justify-between text-xs text-gray-500 mb-2">
                 <span>Capital drawdown</span>
-                <span className="font-medium text-gray-700">{stats.drawdownPct.toFixed(1)}% drawn</span>
+                <span className="font-medium text-gray-700">{drawdownPct.toFixed(1)}% drawn</span>
               </div>
               <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
-                <div className="h-2 bg-[#8B1A1A] rounded-full transition-all" style={{ width: `${Math.min(stats.drawdownPct, 100)}%` }} />
+                <div className="h-2 bg-[#8B1A1A] rounded-full transition-all" style={{ width: `${Math.min(drawdownPct, 100)}%` }} />
               </div>
               <div className="flex justify-between text-[11px] text-gray-400 mt-1.5">
                 <span>{short(stats.totalDeployed)} deployed</span>
@@ -217,7 +219,7 @@ export default async function DashboardPage() {
                     <td className="px-4 py-3 text-xs text-gray-700" colSpan={2}>Total</td>
                     <td className="px-4 py-3">
                       <div className="h-1 bg-gray-100 rounded-full overflow-hidden mb-1">
-                        <div className="h-1 bg-[#8B1A1A] rounded-full" style={{ width: `${Math.min(stats.drawdownPct, 100)}%` }} />
+                        <div className="h-1 bg-[#8B1A1A] rounded-full" style={{ width: `${Math.min(drawdownPct, 100)}%` }} />
                       </div>
                       <p className="text-[10px] text-gray-400">{inr(stats.totalDeployed)} of {inr(stats.totalCommitted)}, {inr(stats.undrawn)} undrawn</p>
                     </td>
@@ -225,7 +227,7 @@ export default async function DashboardPage() {
                     <td className="px-4 py-3 text-right text-xs">
                       <span className={stats.totalGain >= 0 ? "text-green-600" : "text-red-600"}>
                         {stats.totalGain >= 0 ? "+" : ""}{inr(stats.totalGain)}<br />
-                        <span className="text-[11px] opacity-80">({stats.gainPct >= 0 ? "+" : ""}{stats.gainPct.toFixed(1)}%)</span>
+                        <span className="text-[11px] opacity-80">({gainPct >= 0 ? "+" : ""}{gainPct.toFixed(1)}%)</span>
                       </span>
                     </td>
                     <td className="px-4 py-3 text-right text-xs font-semibold text-green-700">{stats.overallMoic.toFixed(2)}x</td>
