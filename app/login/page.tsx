@@ -15,117 +15,114 @@ export default function LoginPage() {
     setLoading(true);
     setError(null);
 
-    try {
-      // Step 1: check is_registered_lp server-side before sending any OTP
-      const checkRes = await fetch("/api/check-lp", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email }),
-      });
+    const supabase = createClient();
+    const { error } = await supabase.auth.signInWithOtp({
+      email,
+      options: {
+        emailRedirectTo: `${window.location.origin}/auth/callback`,
+      },
+    });
 
-      if (!checkRes.ok) {
-        throw new Error("Unable to verify registration status.");
-      }
-
-      const { registered } = await checkRes.json();
-
-      // Step 2: only send the magic link if the LP is registered
-      if (registered) {
-        const supabase = createClient();
-        const { error: otpError } = await supabase.auth.signInWithOtp({
-          email,
-          options: {
-            emailRedirectTo: `${window.location.origin}/auth/callback`,
-          },
-        });
-        if (otpError) {
-          setError(otpError.message);
-          setLoading(false);
-          return;
-        }
-      }
-
-      // Step 3: show the same success message regardless of registration status
-      // (do not reveal whether the email exists in the system)
+    if (error) {
+      setError(error.message);
+      setLoading(false);
+    } else {
       setSent(true);
-    } catch (err) {
-      setError("Something went wrong. Please try again.");
-    } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen bg-white flex flex-col items-center justify-center px-4">
-      <div className="w-full max-w-sm">
-        {/* Logo */}
-        <div className="flex justify-center mb-8">
+    <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center px-4">
+      <div className="w-full max-w-sm bg-white rounded-2xl shadow-lg p-8">
+        <div className="flex flex-col items-center mb-6">
           <Image
             src="/logo.png"
             alt="Lead Invest"
-            width={140}
-            height={48}
-            priority
+            width={120}
+            height={64}
+            className="h-16 w-auto mb-3"
           />
+          <p className="text-xs font-semibold tracking-widest text-gray-400 uppercase">
+            Investor Portal
+          </p>
         </div>
 
-        <h1 className="text-2xl font-semibold text-gray-900 text-center mb-2">
-          LP Portal
-        </h1>
-        <p className="text-sm text-gray-500 text-center mb-8">
-          Sign in to your investor account
-        </p>
+        {!sent ? (
+          <>
+            <h2 className="text-lg font-semibold text-gray-900 mb-1">
+              Sign in to your account
+            </h2>
+            <p className="text-sm text-gray-500 mb-5">
+              Enter your registered email and we&apos;ll send you a secure login link.
+            </p>
 
-        {sent ? (
-          <div className="text-center">
-            <div className="w-12 h-12 bg-green-50 rounded-full flex items-center justify-center mx-auto mb-4">
-              <svg className="w-6 h-6 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <form onSubmit={handleLogin} className="space-y-4">
+              <div>
+                <label
+                  htmlFor="email"
+                  className="block text-sm font-medium text-gray-700 mb-1"
+                >
+                  Email address
+                </label>
+                <input
+                  id="email"
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="you@example.com"
+                  required
+                  className="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#8B1A1A] focus:border-transparent transition"
+                />
+              </div>
+
+              {error && (
+                <p className="text-sm text-red-600 bg-red-50 rounded-lg px-3 py-2">
+                  {error}
+                </p>
+              )}
+
+              <button
+                type="submit"
+                disabled={loading || !email}
+                className="w-full py-2.5 px-4 bg-[#8B1A1A] hover:bg-[#7a1717] disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-medium rounded-lg transition focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#8B1A1A]"
+              >
+                {loading ? "Sending..." : "Send login link"}
+              </button>
+            </form>
+          </>
+        ) : (
+          <div className="text-center py-4">
+            <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-green-100 mb-4">
+              <svg className="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
               </svg>
             </div>
-            <h2 className="text-lg font-medium text-gray-900 mb-2">Check your email</h2>
-            <p className="text-sm text-gray-500">
-              If your email address is registered, you will receive a login link shortly.
+            <h2 className="text-lg font-semibold text-gray-900 mb-2">Check your email</h2>
+            <p className="text-sm text-gray-500 mb-1">We sent a login link to</p>
+            <p className="text-sm font-medium text-gray-900 mb-4">{email}</p>
+            <p className="text-xs text-gray-400">
+              The link expires in 1 hour. Check your spam folder if you don&apos;t see it.
             </p>
-          </div>
-        ) : (
-          <form onSubmit={handleLogin} className="space-y-4">
-            <div>
-              <label
-                htmlFor="email"
-                className="block text-sm font-medium text-gray-700 mb-1"
-              >
-                Email address
-              </label>
-              <input
-                id="email"
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-                placeholder="you@example.com"
-                className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-[#8B1A1A] focus:border-transparent"
-              />
-            </div>
-
-            {error && (
-              <p className="text-sm text-red-600">{error}</p>
-            )}
-
             <button
-              type="submit"
-              disabled={loading}
-              className="w-full py-2 px-4 bg-[#8B1A1A] text-white text-sm font-medium rounded-md hover:bg-[#7a1616] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              onClick={() => { setSent(false); setEmail(""); }}
+              className="mt-6 text-sm text-[#8B1A1A] hover:underline"
             >
-              {loading ? "Checking..." : "Send login link"}
+              Use a different email
             </button>
-          </form>
+          </div>
         )}
-
-        <p className="mt-8 text-xs text-gray-400 text-center">
-          Access is restricted to registered Lead Invest LPs only.
-        </p>
       </div>
+
+      <p className="mt-6 text-xs text-gray-400 text-center">
+        Access is restricted to registered Lead Invest LPs only.
+        <br />
+        Contact{" "}
+        <a href="mailto:kushagra@leadinvest.in" className="text-[#8B1A1A] hover:underline">
+          kushagra@leadinvest.in
+        </a>{" "}
+        for help.
+      </p>
     </div>
   );
 }
