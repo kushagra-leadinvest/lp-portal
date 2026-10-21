@@ -3,16 +3,11 @@ import { getCashFlowData } from "@/lib/queries";
 import { AS_OF_DATE } from "@/lib/constants";
 import { inr, short, formatDate, fyQuarter } from "@/lib/format";
 
-type CashFlowRow = {
-  id: string;
-  direction: string;
-  amount: number | string;
-  date: string;
-  notes: string | null;
-  schemes: { id: string; name: string } | null;
-};
+type SchemeRef = { id: string; name: string };
+type FlowRow = { id: string; direction: string; amount: string | number; date: string; notes: string | null; schemes: SchemeRef[] | null };
+type CallRow = { id: string; amount: string | number; due_date: string | null; schemes: SchemeRef[] | null };
 
-function CashFlowChart({ flows }: { flows: CashFlowRow[] }) {
+function CashFlowChart({ flows }: { flows: FlowRow[] }) {
   type QuarterBucket = { quarter: string; calls: number; distributions: number };
   const buckets: Record<string, QuarterBucket> = {};
   const qKey = (q: string) => {
@@ -79,7 +74,10 @@ function CashFlowChart({ flows }: { flows: CashFlowRow[] }) {
 export default async function CashFlowsPage() {
   const data = await getCashFlowData();
   if (!data) redirect("/login");
-  const { cashFlows, capitalCalls } = data;
+
+  const cashFlows = data.cashFlows as unknown as FlowRow[];
+  const capitalCalls = data.capitalCalls as unknown as CallRow[];
+
   const totalCalls = cashFlows.filter((cf) => cf.direction === "call").reduce((s, cf) => s + Number(cf.amount), 0);
   const totalDistributions = cashFlows.filter((cf) => cf.direction === "distribution").reduce((s, cf) => s + Number(cf.amount), 0);
   const netCashFlow = totalDistributions - totalCalls;
@@ -102,14 +100,14 @@ export default async function CashFlowsPage() {
         <div className="bg-white border border-gray-200 rounded-xl px-5 pt-4 pb-3 mb-6">
           <p className="text-xs font-semibold text-gray-600 mb-1">Capital calls vs distributions by quarter</p>
           <p className="text-[11px] text-gray-400 mb-3">Indian fiscal year (Apr–Mar)</p>
-          <CashFlowChart flows={cashFlows as unknown as CashFlowRow[]} />
+          <CashFlowChart flows={cashFlows} />
         </div>
         {capitalCalls.length > 0 && (
           <div className="mb-6">
             <h2 className="text-sm font-semibold text-gray-700 mb-3">Upcoming capital calls</h2>
             <div className="space-y-2">
               {capitalCalls.map((call) => {
-                const scheme = call.schemes as { id: string; name: string } | null;
+                const scheme = call.schemes?.[0] ?? null;
                 return (
                   <div key={call.id} className="bg-amber-50 border border-amber-100 rounded-xl px-5 py-4 flex items-center justify-between gap-4">
                     <div>
@@ -151,7 +149,7 @@ export default async function CashFlowsPage() {
                 </thead>
                 <tbody className="divide-y divide-gray-50">
                   {sorted.map((cf) => {
-                    const scheme = (cf as unknown as CashFlowRow).schemes;
+                    const scheme = cf.schemes?.[0] ?? null;
                     return (
                       <tr key={cf.id} className="hover:bg-gray-50/60 transition-colors">
                         <td className="px-4 py-3 text-xs text-gray-500 font-mono">{formatDate(cf.date)}</td>
