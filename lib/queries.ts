@@ -1,10 +1,4 @@
 // ─── lib/queries.ts ───────────────────────────────────────────────────────────
-// One async function per dashboard page.
-// Security rules:
-//   • Always resolves investor_id from auth.uid() → investors.auth_user_id via RLS.
-//   • Never trusts a client-passed investor_id or investor row.
-//   • All Supabase queries run with the user's session cookie → RLS applies automatically.
-
 import { createClient } from "@/lib/supabase/server";
 
 // ─── Shared: resolve investor_id from auth session ────────────────────────────
@@ -22,6 +16,12 @@ async function resolveInvestorId(): Promise<{ supabase: ReturnType<typeof create
 
   if (!investor) return null;
   return { supabase, investorId: investor.id };
+}
+
+// ─── Helper: extract id from a Supabase joined scheme (always returns array) ──
+
+function schemeId(schemes: unknown): string {
+  return (schemes as Array<{ id: string }> | null)?.[0]?.id ?? "";
 }
 
 // ─── Investor profile ─────────────────────────────────────────────────────────
@@ -78,6 +78,7 @@ export async function getPortfolioData() {
       .limit(5),
   ]);
 
+  // Build per-scheme distribution totals from cash_flows
   const distributionByScheme: Record<string, number> = {};
   for (const cf of cashFlowsRes.data ?? []) {
     if (cf.direction === "distribution") {
@@ -85,9 +86,10 @@ export async function getPortfolioData() {
     }
   }
 
+  // Attach distributions to each investment row
   const investments = (investmentsRes.data ?? []).map((inv) => ({
     ...inv,
-    distributions: distributionByScheme[(inv.schemes as { id: string } | null)?.id ?? ""] ?? 0,
+    distributions: distributionByScheme[schemeId(inv.schemes)] ?? 0,
   }));
 
   return {
@@ -211,17 +213,18 @@ export async function getCapitalAccountData() {
       .order("date", { ascending: true }),
   ]);
 
+  // Compute per-scheme distributions from cash_flows
   const distributionByScheme: Record<string, number> = {};
   for (const cf of cashFlowsRes.data ?? []) {
     if (cf.direction === "distribution") {
-      const schemeId = (cf.schemes as { id: string } | null)?.id ?? "";
-      distributionByScheme[schemeId] = (distributionByScheme[schemeId] ?? 0) + Number(cf.amount);
+      const sid = schemeId(cf.schemes);
+      distributionByScheme[sid] = (distributionByScheme[sid] ?? 0) + Number(cf.amount);
     }
   }
 
   const investments = (investmentsRes.data ?? []).map((inv) => ({
     ...inv,
-    distributions: distributionByScheme[(inv.schemes as { id: string } | null)?.id ?? ""] ?? 0,
+    distributions: distributionByScheme[schemeId(inv.schemes)] ?? 0,
   }));
 
   return {
