@@ -1,68 +1,24 @@
 import Link from "next/link";
-import {
-  LP_NAME,
-  AS_OF_DATE,
-  FUND_NAME,
-  HOLDINGS,
-  UPCOMING_CALLS,
-  VALUE_HISTORY,
-  PUBLISHED_UPDATES,
-  aggregate,
-  inr,
-  short,
-  type Holding,
-  type ValueSnapshot,
-} from "@/lib/dummy-data";
+import { redirect } from "next/navigation";
+import { getPortfolioData } from "@/lib/queries";
+import { AS_OF_DATE } from "@/lib/constants";
+import { inr, short, aggregate, formatDate } from "@/lib/format";
 
-// ─── Value-over-time chart (SVG line) ────────────────────────────────────────
+type SchemeRef = { id: string; name: string; sector: string; entry_date: string };
+type InvRow = {
+  id: string;
+  committed: string | number;
+  deployed: string | number;
+  distributions: number;
+  current_value: string | number | null;
+  moic: string | number | null;
+  schemes: SchemeRef[] | null;
+};
+type CallRow = { id: string; amount: string | number; due_date: string | null; schemes: { id: string; name: string }[] | null };
 
-function ValueChart({ data }: { data: ValueSnapshot[] }) {
-  const W = 500, H = 150;
-  const PAD = { top: 16, right: 20, bottom: 32, left: 64 };
-  const plotW = W - PAD.left - PAD.right;
-  const plotH = H - PAD.top - PAD.bottom;
-
-  const maxVal = Math.max(...data.map((d) => d.value));
-  const minVal = 0;
-  const range = maxVal - minVal || 1;
-
-  const x = (i: number) => PAD.left + (i / (data.length - 1)) * plotW;
-  const y = (v: number) => PAD.top + plotH - ((v - minVal) / range) * plotH;
-
-  const points = data.map((d, i) => `${x(i)},${y(d.value)}`).join(" ");
-  const areaPoints = [
-    `${PAD.left},${PAD.top + plotH}`,
-    ...data.map((d, i) => `${x(i)},${y(d.value)}`),
-    `${x(data.length - 1)},${PAD.top + plotH}`,
-  ].join(" ");
-
-  const gridVals = [0, maxVal * 0.5, maxVal];
-
-  return (
-    <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ height: 150 }} aria-label="Portfolio value over time">
-      {gridVals.map((v) => (
-        <g key={v}>
-          <line x1={PAD.left} y1={y(v)} x2={W - PAD.right} y2={y(v)} stroke="#f0f0f0" strokeWidth="1" />
-          <text x={PAD.left - 6} y={y(v) + 4} textAnchor="end" fontSize="9" fill="#9ca3af">{short(v)}</text>
-        </g>
-      ))}
-      <polygon points={areaPoints} fill="#8B1A1A" fillOpacity="0.07" />
-      <polyline points={points} fill="none" stroke="#8B1A1A" strokeWidth="1.5" strokeLinejoin="round" />
-      {data.map((d, i) => (
-        <circle key={i} cx={x(i)} cy={y(d.value)} r="3" fill="#8B1A1A" />
-      ))}
-      {data.map((d, i) => (
-        <text key={i} x={x(i)} y={H - 6} textAnchor="middle" fontSize="9" fill="#9ca3af">{d.quarter}</text>
-      ))}
-    </svg>
-  );
-}
-
-// ─── Commitment bar (per holding row) ────────────────────────────────────────
-
-function CommitmentBar({ h }: { h: Holding }) {
-  const undrawn = h.committed - h.deployed;
-  const pct = h.committed > 0 ? (h.deployed / h.committed) * 100 : 0;
+function CommitmentBar({ committed, deployed }: { committed: number; deployed: number }) {
+  const undrawn = committed - deployed;
+  const pct = committed > 0 ? (deployed / committed) * 100 : 0;
   const fullyDeployed = undrawn <= 0;
   return (
     <div>
@@ -70,209 +26,267 @@ function CommitmentBar({ h }: { h: Holding }) {
         <div className="h-1 bg-[#8B1A1A] rounded-full" style={{ width: `${Math.min(pct, 100)}%` }} />
       </div>
       {fullyDeployed ? (
-        <p className="text-[10px] text-gray-400">Fully deployed · Speak to your relationship manager about future opportunities</p>
+        <p className="text-[10px] text-gray-400">Fully deployed · Speak to your RM about future opportunities</p>
       ) : (
-        <p className="text-[10px] text-gray-400">{inr(h.deployed)} deployed of {inr(h.committed)}, {inr(undrawn)} undrawn</p>
+        <p className="text-[10px] text-gray-400">{inr(deployed)} deployed of {inr(committed)}, {inr(undrawn)} undrawn</p>
       )}
     </div>
   );
 }
 
-// ─── Summary card ─────────────────────────────────────────────────────────────
+export default async function DashboardPage() {
+  const data = await getPortfolioData();
+  if (!data) redirect("/login");
 
-function SummaryCard({
-  label, value, sub, highlight,
-}: {
-  label: string; value: string; sub?: string; highlight?: boolean;
-}) {
+  const investments = data.investments as unknown as InvRow[];
+  const capitalCalls = data.capitalCalls as unknown as CallRow[];
+  const recentUpdates = data.recentUpdates;
+
+  const stats = aggregate(investments);
+  const gainPct = stats.totalDeployed > 0 ? (stats.totalGain / stats.totalDeployed) * 100 : 0;
+  const drawdownPct = stats.totalCommitted > 0 ? (stats.totalDeployed / stats.totalCommitted) * 100 : 0;
+
   return (
-    <div className={`rounded-xl px-5 py-4 border ${highlight ? "bg-[#8B1A1A] border-[#8B1A1A] text-white" : "bg-white border-gray-200"}`}>
+    <div className="min-h-full flex flex-col">
+      <div className="px-8 pt-7 pb-0">
+        <div className="flex items-center justify-between mb-6">
+          <div>
+            <h1 className="text-xl font-semibold text-gray-900">My Portfolio</h1>
+            <p className="text-xs text-gray-400 mt-0.5">As of {AS_OF_DATE}</p>
+          </div>
+        </div>
+
+        {investments.length === 0 ? (
+          <EmptyState message="No investments found. Data will appear here once populated by the fund manager." />
+        ) : (
+          <>
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
+              <SummaryCard label="Total Committed" value={short(stats.totalCommitted)} sub={inr(stats.totalCommitted)} />
+              <SummaryCard label="Deployed" value={short(stats.totalDeployed)} sub={inr(stats.totalDeployed)} />
+              <SummaryCard label="Undrawn" value={short(stats.undrawn)} sub={inr(stats.undrawn)} muted={stats.undrawn === 0} />
+              <SummaryCard
+                label="Current Value"
+                value={short(stats.totalCurrentValue)}
+                sub={
+                  <span className={stats.totalGain >= 0 ? "text-green-500" : "text-red-500"}>
+                    {stats.totalGain >= 0 ? "+" : ""}{short(stats.totalGain)} ({gainPct >= 0 ? "+" : ""}{gainPct.toFixed(1)}%)
+                  </span>
+                }
+                highlight
+              />
+            </div>
+
+            <div className="bg-white border border-gray-200 rounded-xl px-5 py-4 mb-4">
+              <div className="flex justify-between text-xs text-gray-500 mb-2">
+                <span>Capital drawdown</span>
+                <span className="font-medium text-gray-700">{drawdownPct.toFixed(1)}% drawn</span>
+              </div>
+              <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+                <div className="h-2 bg-[#8B1A1A] rounded-full transition-all" style={{ width: `${Math.min(drawdownPct, 100)}%` }} />
+              </div>
+              <div className="flex justify-between text-[11px] text-gray-400 mt-1.5">
+                <span>{short(stats.totalDeployed)} deployed</span>
+                <span>{short(stats.undrawn)} remaining</span>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-3 gap-4 mb-6">
+              <MetricBadge label="MOIC" value={`${stats.overallMoic.toFixed(2)}x`} />
+              <MetricBadge label="DPI" value={`${stats.overallDpi.toFixed(2)}x`} />
+              <MetricBadge label="XIRR" value="Coming soon" muted />
+            </div>
+          </>
+        )}
+      </div>
+
+      <section className="px-8 mb-8">
+        <div className="bg-white border border-gray-200 rounded-xl px-5 pt-4 pb-5">
+          <p className="text-xs font-semibold text-gray-600 mb-1">Portfolio value over time</p>
+          <p className="text-[11px] text-gray-400 mb-3">Estimated LP holding value, quarterly</p>
+          <div className="flex flex-col items-center justify-center py-8 text-center">
+            <svg className="mb-3 text-gray-200" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+              <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
+            </svg>
+            <p className="text-sm text-gray-400">Quarterly value history</p>
+            <p className="text-xs text-gray-300 mt-1">Will appear here after the first quarter-end.</p>
+          </div>
+        </div>
+      </section>
+
+      {capitalCalls.length > 0 && (
+        <section className="px-8 mb-8">
+          <h2 className="text-sm font-semibold text-gray-700 mb-3">Upcoming capital calls</h2>
+          <div className="space-y-2">
+            {capitalCalls.map((call) => {
+              const scheme = call.schemes?.[0] ?? null;
+              return (
+                <div key={call.id} className="bg-white border border-gray-200 rounded-xl px-5 py-4 flex items-center justify-between gap-4">
+                  <div>
+                    <p className="text-sm font-medium text-gray-800">{scheme?.name ?? "—"}</p>
+                    <p className="text-xs text-gray-400 mt-0.5">Due {call.due_date ? formatDate(call.due_date) : "—"}</p>
+                  </div>
+                  <div className="text-right flex-shrink-0">
+                    <p className="text-sm font-semibold text-gray-800">{inr(Number(call.amount))}</p>
+                    <p className="text-[11px] text-gray-400">{short(Number(call.amount))}</p>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      )}
+
+      <section className="px-8 mb-8">
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-sm font-semibold text-gray-700">Latest updates</h2>
+          <Link href="/dashboard/updates" className="text-xs text-[#8B1A1A] hover:underline">View all</Link>
+        </div>
+        {recentUpdates.length === 0 ? (
+          <p className="text-sm text-gray-400 py-4 text-center">No updates yet.</p>
+        ) : (
+          <div className="space-y-2">
+            {recentUpdates.map((u) => (
+              <div key={u.id} className="flex items-start gap-3 bg-white border border-gray-200 rounded-lg px-4 py-3">
+                <span className="mt-1 w-1.5 h-1.5 rounded-full bg-[#8B1A1A] flex-shrink-0" />
+                <div className="min-w-0">
+                  <p className="text-xs font-medium text-gray-700">{u.title}</p>
+                  <p className="text-xs text-gray-500 line-clamp-1 mt-0.5">{u.content}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+
+      {investments.length > 0 && (
+        <section className="px-8 mb-8">
+          <h2 className="text-sm font-semibold text-gray-700 mb-3">Portfolio holdings</h2>
+          <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-gray-100 bg-gray-50/60">
+                    <Th align="left">Company</Th>
+                    <Th align="left">Sector</Th>
+                    <Th align="left">Commitment</Th>
+                    <Th>Current Value</Th>
+                    <Th>Gain / Loss</Th>
+                    <Th>MOIC</Th>
+                    <Th>DPI</Th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-50">
+                  {investments.map((inv) => {
+                    const scheme = inv.schemes?.[0] ?? null;
+                    const currentValue = inv.current_value !== null ? Number(inv.current_value) : null;
+                    const deployed = Number(inv.deployed);
+                    const committed = Number(inv.committed);
+                    const moic = inv.moic !== null ? Number(inv.moic) : (currentValue !== null && deployed > 0 ? currentValue / deployed : 0);
+                    const dpi = deployed > 0 ? inv.distributions / deployed : 0;
+                    const diff = currentValue !== null ? currentValue - deployed : null;
+                    const diffPct = diff !== null && deployed > 0 ? (diff / deployed) * 100 : null;
+                    return (
+                      <tr key={inv.id} className="hover:bg-gray-50/80 transition-colors">
+                        <td className="px-4 py-3">
+                          <Link href={`/dashboard/portfolio/${scheme?.id ?? ""}`} className="font-medium text-gray-900 hover:text-[#8B1A1A] transition-colors">
+                            {scheme?.name ?? "—"}
+                          </Link>
+                          <p className="text-[11px] text-gray-400">{scheme?.entry_date ? formatDate(scheme.entry_date) : "—"}</p>
+                        </td>
+                        <td className="px-4 py-3 text-gray-500 text-xs">{scheme?.sector ?? "—"}</td>
+                        <td className="px-4 py-3 min-w-[220px]"><CommitmentBar committed={committed} deployed={deployed} /></td>
+                        <td className="px-4 py-3 text-right font-mono text-xs text-gray-700">
+                          {currentValue !== null ? inr(currentValue) : <span className="text-gray-400 italic font-sans">Valuation pending</span>}
+                        </td>
+                        <td className="px-4 py-3 text-right text-xs">
+                          {diff !== null && diffPct !== null ? (
+                            <span className={diff >= 0 ? "text-green-600" : "text-red-600"}>
+                              {diff >= 0 ? "+" : ""}{inr(diff)}<br />
+                              <span className="text-[11px] opacity-80">({diffPct >= 0 ? "+" : ""}{diffPct.toFixed(1)}%)</span>
+                            </span>
+                          ) : <span className="text-gray-400">–</span>}
+                        </td>
+                        <td className="px-4 py-3 text-right text-xs font-medium">
+                          <span className={moic >= 1 ? "text-green-700" : "text-red-600"}>{moic.toFixed(2)}x</span>
+                        </td>
+                        <td className="px-4 py-3 text-right text-xs text-gray-500">{dpi.toFixed(2)}x</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+                <tfoot>
+                  <tr className="border-t-2 border-gray-200 bg-gray-50/80 font-semibold">
+                    <td className="px-4 py-3 text-xs text-gray-700" colSpan={2}>Total</td>
+                    <td className="px-4 py-3">
+                      <div className="h-1 bg-gray-100 rounded-full overflow-hidden mb-1">
+                        <div className="h-1 bg-[#8B1A1A] rounded-full" style={{ width: `${Math.min(drawdownPct, 100)}%` }} />
+                      </div>
+                      <p className="text-[10px] text-gray-400">{inr(stats.totalDeployed)} of {inr(stats.totalCommitted)}, {inr(stats.undrawn)} undrawn</p>
+                    </td>
+                    <td className="px-4 py-3 text-right font-mono text-xs text-gray-700">{inr(stats.totalCurrentValue)}</td>
+                    <td className="px-4 py-3 text-right text-xs">
+                      <span className={stats.totalGain >= 0 ? "text-green-600" : "text-red-600"}>
+                        {stats.totalGain >= 0 ? "+" : ""}{inr(stats.totalGain)}<br />
+                        <span className="text-[11px] opacity-80">({gainPct >= 0 ? "+" : ""}{gainPct.toFixed(1)}%)</span>
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-right text-xs font-semibold text-green-700">{stats.overallMoic.toFixed(2)}x</td>
+                    <td className="px-4 py-3 text-right text-xs text-gray-500">{stats.overallDpi.toFixed(2)}x</td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          </div>
+        </section>
+      )}
+
+      <footer className="mt-auto px-8 py-6 border-t border-gray-100">
+        <p className="text-[11px] text-gray-400 leading-relaxed max-w-2xl">
+          All valuations are unaudited estimates as of {AS_OF_DATE} and are subject to change. Past performance does not guarantee future results. This portal is for registered Lead Invest LPs only.
+        </p>
+        <p className="text-[11px] text-gray-400 mt-2">
+          Questions? <a href="mailto:kushagra@leadinvest.in" className="text-[#8B1A1A] hover:underline">kushagra@leadinvest.in</a>
+        </p>
+      </footer>
+    </div>
+  );
+}
+
+function EmptyState({ message }: { message: string }) {
+  return (
+    <div className="bg-white border border-dashed border-gray-200 rounded-xl px-6 py-10 text-center mb-6">
+      <svg className="mx-auto mb-3 text-gray-200" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+        <rect x="2" y="7" width="20" height="14" rx="2" />
+        <path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2" />
+      </svg>
+      <p className="text-sm text-gray-400">{message}</p>
+    </div>
+  );
+}
+
+function SummaryCard({ label, value, sub, highlight, muted }: { label: string; value: string; sub?: React.ReactNode; highlight?: boolean; muted?: boolean }) {
+  return (
+    <div className={`rounded-xl border px-5 py-4 ${highlight ? "bg-[#8B1A1A] border-[#8B1A1A]" : "bg-white border-gray-200"}`}>
       <p className={`text-xs font-medium mb-1 ${highlight ? "text-white/70" : "text-gray-500"}`}>{label}</p>
-      <p className={`text-xl font-semibold tracking-tight ${highlight ? "text-white" : "text-gray-900"}`}>{value}</p>
+      <p className={`text-xl font-semibold tracking-tight ${highlight ? "text-white" : muted ? "text-gray-400" : "text-gray-900"}`}>{value}</p>
       {sub && <p className={`text-[11px] mt-1 ${highlight ? "text-white/60" : "text-gray-400"}`}>{sub}</p>}
     </div>
   );
 }
 
-// ─── Metric badge ─────────────────────────────────────────────────────────────
-
-function MetricBadge({ label, value, pending }: { label: string; value?: string; pending?: boolean }) {
+function MetricBadge({ label, value, muted }: { label: string; value: string; muted?: boolean }) {
   return (
-    <div className="flex flex-col">
-      <span className="text-[10px] font-medium text-gray-400 uppercase tracking-wider">{label}</span>
-      {pending ? (
-        <span className="text-xs text-gray-300 italic">Coming soon</span>
-      ) : (
-        <span className="text-sm font-semibold text-gray-700">{value}</span>
-      )}
+    <div className="bg-white border border-gray-200 rounded-xl px-5 py-3 flex items-center justify-between">
+      <span className="text-xs text-gray-500">{label}</span>
+      <span className={`text-sm font-semibold ${muted ? "text-gray-400 italic text-xs font-normal" : "text-gray-900"}`}>{value}</span>
     </div>
   );
 }
 
-// ─── Page ─────────────────────────────────────────────────────────────────────
-
-export default function DashboardPage() {
-  const stats = aggregate(HOLDINGS);
-  const latestUpdates = PUBLISHED_UPDATES.slice(0, 3);
-
+function Th({ children, align = "right" }: { children: React.ReactNode; align?: "left" | "right" }) {
   return (
-    <div className="px-8 pt-7 pb-12">
-
-      {/* Header */}
-      <div className="flex items-start justify-between mb-6">
-        <div>
-          <h1 className="text-xl font-semibold text-gray-900">Portfolio overview</h1>
-          <p className="text-xs text-gray-400 mt-0.5">{FUND_NAME} · {LP_NAME} · As of {AS_OF_DATE}</p>
-        </div>
-        <span className="text-xs text-gray-400 bg-gray-100 px-2.5 py-1 rounded-full">
-          Dummy data · testing only
-        </span>
-      </div>
-
-      {/* Summary cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
-        <SummaryCard label="Current value" value={short(stats.totalCurrentValue)} sub={inr(stats.totalCurrentValue)} highlight />
-        <SummaryCard label="Capital deployed" value={short(stats.totalDeployed)} sub={`${stats.drawdownPct.toFixed(0)}% of commitment`} />
-        <SummaryCard label="Undrawn" value={short(stats.undrawn)} sub={inr(stats.undrawn)} />
-        <SummaryCard label="Unrealised gain" value={`+${short(stats.totalGain)}`} sub={`+${stats.gainPct.toFixed(1)}% on deployed`} />
-      </div>
-
-      {/* Metrics row */}
-      <div className="bg-white border border-gray-200 rounded-xl px-5 py-4 flex items-center gap-8 mb-6">
-        <MetricBadge label="MOIC" value={`${stats.overallMoic.toFixed(2)}x`} />
-        <MetricBadge label="DPI" value={`${stats.overallDpi.toFixed(2)}x`} />
-        <MetricBadge label="XIRR" pending />
-        <div className="flex-1" />
-        <div className="text-right">
-          <p className="text-[10px] text-gray-400 mb-1">Overall drawdown</p>
-          <div className="w-40 h-2 bg-gray-100 rounded-full overflow-hidden">
-            <div className="h-2 bg-[#8B1A1A] rounded-full" style={{ width: `${Math.min(stats.drawdownPct, 100)}%` }} />
-          </div>
-          <p className="text-[10px] text-gray-400 mt-0.5">{stats.drawdownPct.toFixed(0)}% called</p>
-        </div>
-      </div>
-
-      {/* Value chart */}
-      <div className="bg-white border border-gray-200 rounded-xl px-5 pt-4 pb-3 mb-6">
-        <p className="text-xs font-semibold text-gray-600 mb-1">Portfolio value over time</p>
-        <p className="text-[11px] text-gray-400 mb-3">Estimated fair value · quarterly</p>
-        <ValueChart data={VALUE_HISTORY} />
-      </div>
-
-      {/* Upcoming capital calls */}
-      {UPCOMING_CALLS.length > 0 && (
-        <div className="mb-6">
-          <h2 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">Upcoming capital calls</h2>
-          <div className="space-y-2">
-            {UPCOMING_CALLS.map((call) => (
-              <div key={call.company} className="bg-amber-50 border border-amber-100 rounded-xl px-5 py-3 flex items-center justify-between">
-                <div>
-                  <div className="flex items-center gap-2 mb-0.5">
-                    <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
-                    <p className="text-sm font-medium text-gray-800">{call.company}</p>
-                  </div>
-                  <p className="text-xs text-gray-500 ml-3.5">Due {call.dueDate}</p>
-                  {call.notes && <p className="text-xs text-gray-400 ml-3.5">{call.notes}</p>}
-                </div>
-                <div className="text-right">
-                  <p className="text-sm font-semibold text-gray-800">{inr(call.amount)}</p>
-                  <p className="text-[11px] text-gray-400">{short(call.amount)}</p>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Holdings table */}
-      <div className="mb-6">
-        <h2 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">Holdings</h2>
-        <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-gray-100 bg-gray-50/60">
-                <th className="px-4 py-2.5 text-left text-[11px] font-medium text-gray-500 uppercase tracking-wider">Company</th>
-                <th className="px-4 py-2.5 text-left text-[11px] font-medium text-gray-500 uppercase tracking-wider">Commitment</th>
-                <th className="px-4 py-2.5 text-right text-[11px] font-medium text-gray-500 uppercase tracking-wider">Current value</th>
-                <th className="px-4 py-2.5 text-right text-[11px] font-medium text-gray-500 uppercase tracking-wider">Gain / Loss</th>
-                <th className="px-4 py-2.5 text-right text-[11px] font-medium text-gray-500 uppercase tracking-wider">MOIC</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-50">
-              {HOLDINGS.map((h) => {
-                const gain = h.currentValue - h.deployed;
-                const gainPct = h.deployed > 0 ? (gain / h.deployed) * 100 : 0;
-                const moic = h.deployed > 0 ? h.currentValue / h.deployed : 0;
-                return (
-                  <tr key={h.id} className="hover:bg-gray-50/60 transition-colors">
-                    <td className="px-4 py-3">
-                      <Link href={`/dashboard/portfolio/${h.id}`} className="text-sm font-medium text-gray-800 hover:text-[#8B1A1A] transition-colors">
-                        {h.company}
-                      </Link>
-                      <p className="text-[11px] text-gray-400">{h.sector}</p>
-                    </td>
-                    <td className="px-4 py-3 w-52">
-                      <CommitmentBar h={h} />
-                    </td>
-                    <td className="px-4 py-3 text-right font-mono text-xs text-gray-700 font-medium">
-                      {h.valuationAvailable ? inr(h.currentValue) : <span className="text-gray-400 italic font-sans text-[11px]">Valuation pending</span>}
-                    </td>
-                    <td className="px-4 py-3 text-right text-xs">
-                      {h.valuationAvailable ? (
-                        <span className={gain >= 0 ? "text-green-600" : "text-red-600"}>
-                          {gain >= 0 ? "+" : ""}{inr(gain)}<br />
-                          <span className="text-[10px]">({gainPct >= 0 ? "+" : ""}{gainPct.toFixed(1)}%)</span>
-                        </span>
-                      ) : <span className="text-gray-300">—</span>}
-                    </td>
-                    <td className="px-4 py-3 text-right text-xs font-semibold text-gray-700">
-                      {h.valuationAvailable ? `${moic.toFixed(2)}x` : <span className="text-gray-300">—</span>}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-            <tfoot>
-              <tr className="border-t-2 border-gray-200 bg-gray-50/80 font-semibold">
-                <td className="px-4 py-3 text-xs text-gray-700">Total · 5 companies</td>
-                <td className="px-4 py-3" />
-                <td className="px-4 py-3 text-right font-mono text-xs text-gray-700">{inr(stats.totalCurrentValue)}</td>
-                <td className="px-4 py-3 text-right text-xs text-green-600">+{inr(stats.totalGain)}</td>
-                <td className="px-4 py-3 text-right text-xs font-semibold text-gray-700">{stats.overallMoic.toFixed(2)}x</td>
-              </tr>
-            </tfoot>
-          </table>
-        </div>
-      </div>
-
-      {/* Latest updates */}
-      <div>
-        <div className="flex items-center justify-between mb-3">
-          <h2 className="text-xs font-bold text-gray-500 uppercase tracking-wider">Latest updates</h2>
-          <Link href="/dashboard/updates" className="text-xs text-[#8B1A1A] hover:underline">View all</Link>
-        </div>
-        <div className="space-y-2">
-          {latestUpdates.map((u) => (
-            <Link key={u.id} href={`/dashboard/portfolio/${u.company.toLowerCase().replace(/[\s.]/g, "-")}`}>
-              <div className="bg-white border border-gray-200 rounded-xl px-5 py-4 hover:border-gray-300 transition-colors">
-                <div className="flex items-center justify-between mb-1">
-                  <p className="text-sm font-medium text-gray-800">{u.company}</p>
-                  <span className="text-[10px] text-gray-400">{u.displayDate}</span>
-                </div>
-                <p className="text-xs text-gray-500 line-clamp-2">{u.body}</p>
-              </div>
-            </Link>
-          ))}
-        </div>
-      </div>
-
-      {/* Footer */}
-      <div className="mt-10 pt-6 border-t border-gray-100">
-        <p className="text-[11px] text-gray-400 leading-relaxed max-w-2xl">
-          All valuations are unaudited estimates as of {AS_OF_DATE}. MOIC and DPI figures are based on deployed capital only and do not constitute financial advice. For queries, contact{" "}
-          <a href="mailto:kushagra@leadinvest.in" className="text-[#8B1A1A] hover:underline">kushagra@leadinvest.in</a>
-        </p>
-      </div>
-    </div>
+    <th className={`px-4 py-2.5 text-[11px] font-medium text-gray-500 uppercase tracking-wider ${align === "right" ? "text-right" : "text-left"}`}>
+      {children}
+    </th>
   );
 }
