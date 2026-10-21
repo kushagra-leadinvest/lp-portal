@@ -102,7 +102,7 @@ export default async function CashFlowsPage() {
         <div className="bg-white border border-gray-200 rounded-xl px-5 pt-4 pb-3 mb-6">
           <p className="text-xs font-semibold text-gray-600 mb-1">Capital calls vs distributions by quarter</p>
           <p className="text-[11px] text-gray-400 mb-3">Indian fiscal year (Apr–Mar)</p>
-          <CashFlowChart flows={cashFlows as CashFlowRow[]} />
+          <CashFlowChart flows={cashFlows as unknown as CashFlowRow[]} />
         </div>
         {capitalCalls.length > 0 && (
           <div className="mb-6">
