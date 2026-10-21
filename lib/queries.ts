@@ -1,170 +1,286 @@
-import { SupabaseClient } from "@supabase/supabase-js";
+// ─── lib/queries.ts ───────────────────────────────────────────────────────────
+// One async function per dashboard page.
+// Security rules:
+//   • Always resolves investor_id from auth.uid() → investors.auth_user_id via RLS.
+//   • Never trusts a client-passed investor_id or investor row.
+//   • All Supabase queries run with the user's session cookie → RLS applies automatically.
 
-export type Investor = {
-  id: string;
-  auth_user_id: string;
-  name: string;
-  email: string;
-  created_at: string;
-};
+import { createClient } from "@/lib/supabase/server";
 
-export type Scheme = {
-  id: string;
-  name: string;
-  sector: string;
-  stage: string;
-};
+// ─── Shared: resolve investor_id from auth session ────────────────────────────
 
-export type Investment = {
-  id: string;
-  investor_id: string;
-  scheme_id: string;
-  committed_amount: number;
-  deployed_amount: number;
-  current_value: number | null;
-  moic: number | null;
-  ownership_pct: number | null;
-  schemes: Scheme;
-};
+async function resolveInvestorId(): Promise<{ supabase: ReturnType<typeof createClient>; investorId: string } | null> {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return null;
 
-export type CashFlow = {
-  id: string;
-  investor_id: string;
-  scheme_id: string;
-  direction: "call" | "distribution";
-  amount: number;
-  date: string;
-  notes: string | null;
-  schemes: { name: string };
-};
+  const { data: investor } = await supabase
+    .from("investors")
+    .select("id")
+    .eq("auth_user_id", user.id)
+    .single();
 
-export type CapitalCall = {
-  id: string;
-  investor_id: string;
-  scheme_id: string;
-  amount: number;
-  due_date: string;
-  status: "upcoming" | "called" | "overdue";
-  notes: string | null;
-  schemes: { name: string };
-};
-
-export type Document = {
-  id: string;
-  investor_id: string;
-  filename: string;
-  document_type: string;
-  storage_path: string;
-  uploaded_at: string;
-};
-
-export type Update = {
-  id: string;
-  title: string;
-  body: string;
-  published_at: string;
-  scheme_ids: string[];
-};
-
-export type PortfolioStats = {
-  totalCommitted: number;
-  totalDeployed: number;
-  totalCurrentValue: number;
-  undrawn: number;
-  totalGain: number;
-  gainPct: number;
-  drawdownPct: number;
-  overallMoic: number;
-};
-
-export function aggregateInvestments(investments: Investment[]): PortfolioStats {
-  const totalCommitted = investments.reduce((s, i) => s + i.committed_amount, 0);
-  const totalDeployed = investments.reduce((s, i) => s + i.deployed_amount, 0);
-  const totalCurrentValue = investments.reduce(
-    (s, i) => s + (i.current_value ?? i.deployed_amount),
-    0
-  );
-  const undrawn = totalCommitted - totalDeployed;
-  const totalGain = totalCurrentValue - totalDeployed;
-  const gainPct = totalDeployed > 0 ? (totalGain / totalDeployed) * 100 : 0;
-  const drawdownPct = totalCommitted > 0 ? (totalDeployed / totalCommitted) * 100 : 0;
-  const overallMoic = totalDeployed > 0 ? totalCurrentValue / totalDeployed : 1;
-
-  return {
-    totalCommitted,
-    totalDeployed,
-    totalCurrentValue,
-    undrawn,
-    totalGain,
-    gainPct,
-    drawdownPct,
-    overallMoic,
-  };
+  if (!investor) return null;
+  return { supabase, investorId: investor.id };
 }
 
-export async function getInvestor(supabase: SupabaseClient): Promise<Investor | null> {
+// ─── Investor profile ─────────────────────────────────────────────────────────
+
+export async function getInvestorProfile() {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return null;
+
   const { data } = await supabase
     .from("investors")
-    .select("id, auth_user_id, name, email, created_at")
+    .select("id, full_name, email, phone")
+    .eq("auth_user_id", user.id)
     .single();
+
   return data ?? null;
 }
 
-export async function getInvestments(supabase: SupabaseClient): Promise<Investment[]> {
-  const { data } = await supabase
-    .from("investments")
-    .select("id, investor_id, scheme_id, committed_amount, deployed_amount, current_value, moic, ownership_pct, schemes(id, name, sector, stage)")
-    .order("committed_amount", { ascending: false });
-  return (data ?? []) as unknown as Investment[];
+// ─── Portfolio overview — dashboard/page.tsx ──────────────────────────────────
+
+export async function getPortfolioData() {
+  const ctx = await resolveInvestorId();
+  if (!ctx) return null;
+  const { supabase, investorId } = ctx;
+
+  const [investmentsRes, cashFlowsRes, capitalCallsRes, recentUpdatesRes] = await Promise.all([
+    supabase
+      .from("investments")
+      .select(`
+        id, committed, deployed, current_value, moic, ownership_pct, entry_valuation,
+        schemes ( id, name, sector, stage, entry_date )
+      `)
+      .eq("investor_id", investorId),
+
+    supabase
+      .from("cash_flows")
+      .select("id, scheme_id, direction, amount, date")
+      .eq("investor_id", investorId),
+
+    supabase
+      .from("capital_calls")
+      .select(`
+        id, amount, due_date, status,
+        schemes ( id, name )
+      `)
+      .eq("investor_id", investorId)
+      .eq("status", "upcoming")
+      .order("due_date", { ascending: true }),
+
+    supabase
+      .from("updates")
+      .select("id, scheme_ids, title, content, quarter, published_at")
+      .order("published_at", { ascending: false })
+      .limit(5),
+  ]);
+
+  const distributionByScheme: Record<string, number> = {};
+  for (const cf of cashFlowsRes.data ?? []) {
+    if (cf.direction === "distribution") {
+      distributionByScheme[cf.scheme_id] = (distributionByScheme[cf.scheme_id] ?? 0) + Number(cf.amount);
+    }
+  }
+
+  const investments = (investmentsRes.data ?? []).map((inv) => ({
+    ...inv,
+    distributions: distributionByScheme[(inv.schemes as { id: string } | null)?.id ?? ""] ?? 0,
+  }));
+
+  return {
+    investments,
+    capitalCalls: capitalCallsRes.data ?? [],
+    recentUpdates: recentUpdatesRes.data ?? [],
+  };
 }
 
-export async function getUpcomingCapitalCalls(supabase: SupabaseClient): Promise<CapitalCall[]> {
-  const today = new Date().toISOString().split("T")[0];
-  const { data } = await supabase
-    .from("capital_calls")
-    .select("id, investor_id, scheme_id, amount, due_date, status, notes, schemes(name)")
-    .gte("due_date", today)
-    .order("due_date", { ascending: true });
-  return (data ?? []) as unknown as CapitalCall[];
+// ─── Cash flows page — dashboard/cash-flows/page.tsx ─────────────────────────
+
+export async function getCashFlowData() {
+  const ctx = await resolveInvestorId();
+  if (!ctx) return null;
+  const { supabase, investorId } = ctx;
+
+  const [cashFlowsRes, capitalCallsRes] = await Promise.all([
+    supabase
+      .from("cash_flows")
+      .select(`
+        id, direction, amount, date, notes,
+        schemes ( id, name )
+      `)
+      .eq("investor_id", investorId)
+      .order("date", { ascending: true }),
+
+    supabase
+      .from("capital_calls")
+      .select(`
+        id, amount, due_date,
+        schemes ( id, name )
+      `)
+      .eq("investor_id", investorId)
+      .eq("status", "upcoming")
+      .order("due_date", { ascending: true }),
+  ]);
+
+  return {
+    cashFlows: cashFlowsRes.data ?? [],
+    capitalCalls: capitalCallsRes.data ?? [],
+  };
 }
 
-export async function getAllCapitalCalls(supabase: SupabaseClient): Promise<CapitalCall[]> {
-  const { data } = await supabase
-    .from("capital_calls")
-    .select("id, investor_id, scheme_id, amount, due_date, status, notes, schemes(name)")
-    .order("due_date", { ascending: false });
-  return (data ?? []) as unknown as CapitalCall[];
-}
+// ─── Documents page — dashboard/documents/page.tsx ───────────────────────────
 
-export async function getCashFlows(supabase: SupabaseClient): Promise<CashFlow[]> {
-  const { data } = await supabase
-    .from("cash_flows")
-    .select("id, investor_id, scheme_id, direction, amount, date, notes, schemes(name)")
-    .order("date", { ascending: false });
-  return (data ?? []) as unknown as CashFlow[];
-}
+export async function getDocuments() {
+  const ctx = await resolveInvestorId();
+  if (!ctx) return null;
+  const { supabase, investorId } = ctx;
 
-export async function getDocuments(supabase: SupabaseClient): Promise<Document[]> {
   const { data } = await supabase
     .from("documents")
-    .select("id, investor_id, filename, document_type, storage_path, uploaded_at")
-    .order("uploaded_at", { ascending: false });
-  return (data ?? []) as unknown as Document[];
+    .select(`
+      id, name, type, storage_path, created_at,
+      schemes ( id, name )
+    `)
+    .eq("investor_id", investorId)
+    .order("created_at", { ascending: false });
+
+  return data ?? [];
 }
 
-export async function getRecentUpdates(supabase: SupabaseClient): Promise<Update[]> {
-  const { data } = await supabase
-    .from("updates")
-    .select("id, title, body, published_at, scheme_ids")
-    .order("published_at", { ascending: false })
-    .limit(3);
-  return (data ?? []) as unknown as Update[];
+// ─── Updates page — dashboard/updates/page.tsx ───────────────────────────────
+
+export async function getUpdates() {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return null;
+
+  const [updatesRes, schemesRes] = await Promise.all([
+    supabase
+      .from("updates")
+      .select("id, scheme_ids, title, content, quarter, published_at")
+      .order("published_at", { ascending: false }),
+
+    supabase
+      .from("schemes")
+      .select("id, name"),
+  ]);
+
+  return {
+    updates: updatesRes.data ?? [],
+    schemes: schemesRes.data ?? [],
+  };
 }
 
-export async function getAllUpdates(supabase: SupabaseClient): Promise<Update[]> {
-  const { data } = await supabase
-    .from("updates")
-    .select("id, title, body, published_at, scheme_ids")
-    .order("published_at", { ascending: false });
-  return (data ?? []) as unknown as Update[];
+// ─── Capital account statement — dashboard/capital-account/page.tsx ───────────
+
+export async function getCapitalAccountData() {
+  const ctx = await resolveInvestorId();
+  if (!ctx) return null;
+  const { supabase, investorId } = ctx;
+
+  const supabaseRaw = createClient();
+  const { data: { user } } = await supabaseRaw.auth.getUser();
+  if (!user) return null;
+
+  const { data: investor } = await supabase
+    .from("investors")
+    .select("id, full_name, email, phone")
+    .eq("auth_user_id", user.id)
+    .single();
+  if (!investor) return null;
+
+  const [investmentsRes, cashFlowsRes] = await Promise.all([
+    supabase
+      .from("investments")
+      .select(`
+        id, committed, deployed, current_value, moic,
+        schemes ( id, name, sector )
+      `)
+      .eq("investor_id", investorId),
+
+    supabase
+      .from("cash_flows")
+      .select(`
+        id, direction, amount, date, notes,
+        schemes ( id, name )
+      `)
+      .eq("investor_id", investorId)
+      .order("date", { ascending: true }),
+  ]);
+
+  const distributionByScheme: Record<string, number> = {};
+  for (const cf of cashFlowsRes.data ?? []) {
+    if (cf.direction === "distribution") {
+      const schemeId = (cf.schemes as { id: string } | null)?.id ?? "";
+      distributionByScheme[schemeId] = (distributionByScheme[schemeId] ?? 0) + Number(cf.amount);
+    }
+  }
+
+  const investments = (investmentsRes.data ?? []).map((inv) => ({
+    ...inv,
+    distributions: distributionByScheme[(inv.schemes as { id: string } | null)?.id ?? ""] ?? 0,
+  }));
+
+  return {
+    investor,
+    investments,
+    cashFlows: cashFlowsRes.data ?? [],
+  };
+}
+
+// ─── Portfolio detail — dashboard/portfolio/[id]/page.tsx ────────────────────
+
+export async function getInvestmentDetail(schemeId: string) {
+  const ctx = await resolveInvestorId();
+  if (!ctx) return null;
+  const { supabase, investorId } = ctx;
+
+  const [investmentRes, schemeRes, cashFlowsRes, updatesRes] = await Promise.all([
+    supabase
+      .from("investments")
+      .select(`
+        id, committed, deployed, current_value, moic, ownership_pct, entry_valuation,
+        schemes ( id, name, sector, stage, entry_date )
+      `)
+      .eq("investor_id", investorId)
+      .eq("scheme_id", schemeId)
+      .single(),
+
+    supabase
+      .from("schemes")
+      .select("id, name, sector, stage, entry_date, status")
+      .eq("id", schemeId)
+      .single(),
+
+    supabase
+      .from("cash_flows")
+      .select("id, direction, amount, date, notes")
+      .eq("investor_id", investorId)
+      .eq("scheme_id", schemeId)
+      .order("date", { ascending: false }),
+
+    supabase
+      .from("updates")
+      .select("id, title, content, quarter, published_at")
+      .contains("scheme_ids", [schemeId])
+      .order("published_at", { ascending: false }),
+  ]);
+
+  if (!investmentRes.data) return null;
+
+  const cashFlows = cashFlowsRes.data ?? [];
+  const distributions = cashFlows
+    .filter((cf) => cf.direction === "distribution")
+    .reduce((sum, cf) => sum + Number(cf.amount), 0);
+
+  return {
+    investment: investmentRes.data,
+    scheme: schemeRes.data,
+    cashFlows,
+    distributions,
+    updates: updatesRes.data ?? [],
+  };
 }
