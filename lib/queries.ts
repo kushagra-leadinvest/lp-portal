@@ -3,10 +3,15 @@ import { createClient } from "@/lib/supabase/server";
 
 // ─── Shared: resolve investor_id from auth session ────────────────────────────
 
-async function resolveInvestorId(): Promise<{ supabase: ReturnType<typeof createClient>; investorId: string } | null> {
+async function resolveInvestorId(): Promise<
+  | { supabase: ReturnType<typeof createClient>; investorId: string }
+  | { noSession: true }
+  | { noRecord: true }
+  | null
+> {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return null;
+  if (!user) return { noSession: true };
 
   const { data: investor } = await supabase
     .from("investors")
@@ -14,7 +19,7 @@ async function resolveInvestorId(): Promise<{ supabase: ReturnType<typeof create
     .eq("auth_user_id", user.id)
     .single();
 
-  if (!investor) return null;
+  if (!investor) return { noRecord: true };
   return { supabase, investorId: investor.id };
 }
 
@@ -42,9 +47,22 @@ export async function getInvestorProfile() {
 
 // ─── Portfolio overview — dashboard/page.tsx ──────────────────────────────────
 
-export async function getPortfolioData() {
+export type PortfolioDataResult =
+  | { status: "no_session" }
+  | { status: "no_record" }
+  | {
+      status: "ok";
+      investments: unknown[];
+      capitalCalls: unknown[];
+      recentUpdates: unknown[];
+    };
+
+export async function getPortfolioData(): Promise<PortfolioDataResult> {
   const ctx = await resolveInvestorId();
-  if (!ctx) return null;
+  if (!ctx) return { status: "no_session" };
+  if ("noSession" in ctx) return { status: "no_session" };
+  if ("noRecord" in ctx) return { status: "no_record" };
+
   const { supabase, investorId } = ctx;
 
   const [investmentsRes, cashFlowsRes, capitalCallsRes, recentUpdatesRes] = await Promise.all([
@@ -78,7 +96,6 @@ export async function getPortfolioData() {
       .limit(5),
   ]);
 
-  // Build per-scheme distribution totals from cash_flows
   const distributionByScheme: Record<string, number> = {};
   for (const cf of cashFlowsRes.data ?? []) {
     if (cf.direction === "distribution") {
@@ -86,42 +103,36 @@ export async function getPortfolioData() {
     }
   }
 
-  // Attach distributions to each investment row
   const investments = (investmentsRes.data ?? []).map((inv) => ({
     ...inv,
     distributions: distributionByScheme[schemeId(inv.schemes)] ?? 0,
   }));
 
   return {
+    status: "ok",
     investments,
     capitalCalls: capitalCallsRes.data ?? [],
     recentUpdates: recentUpdatesRes.data ?? [],
   };
 }
 
-// ─── Cash flows page — dashboard/cash-flows/page.tsx ─────────────────────────
+// ─── Cash flows page ──────────────────────────────────────────────────────────
 
 export async function getCashFlowData() {
   const ctx = await resolveInvestorId();
-  if (!ctx) return null;
+  if (!ctx || "noSession" in ctx || "noRecord" in ctx) return null;
   const { supabase, investorId } = ctx;
 
   const [cashFlowsRes, capitalCallsRes] = await Promise.all([
     supabase
       .from("cash_flows")
-      .select(`
-        id, direction, amount, date, notes,
-        schemes ( id, name )
-      `)
+      .select(`id, direction, amount, date, notes, schemes ( id, name )`)
       .eq("investor_id", investorId)
       .order("date", { ascending: true }),
 
     supabase
       .from("capital_calls")
-      .select(`
-        id, amount, due_date,
-        schemes ( id, name )
-      `)
+      .select(`id, amount, due_date, schemes ( id, name )`)
       .eq("investor_id", investorId)
       .eq("status", "upcoming")
       .order("due_date", { ascending: true }),
@@ -133,26 +144,23 @@ export async function getCashFlowData() {
   };
 }
 
-// ─── Documents page — dashboard/documents/page.tsx ───────────────────────────
+// ─── Documents page ───────────────────────────────────────────────────────────
 
 export async function getDocuments() {
   const ctx = await resolveInvestorId();
-  if (!ctx) return null;
+  if (!ctx || "noSession" in ctx || "noRecord" in ctx) return null;
   const { supabase, investorId } = ctx;
 
   const { data } = await supabase
     .from("documents")
-    .select(`
-      id, name, type, storage_path, created_at,
-      schemes ( id, name )
-    `)
+    .select(`id, name, type, storage_path, created_at, schemes ( id, name )`)
     .eq("investor_id", investorId)
     .order("created_at", { ascending: false });
 
   return data ?? [];
 }
 
-// ─── Updates page — dashboard/updates/page.tsx ───────────────────────────────
+// ─── Updates page ─────────────────────────────────────────────────────────────
 
 export async function getUpdates() {
   const supabase = createClient();
@@ -165,9 +173,7 @@ export async function getUpdates() {
       .select("id, scheme_ids, title, content, quarter, published_at")
       .order("published_at", { ascending: false }),
 
-    supabase
-      .from("schemes")
-      .select("id, name"),
+    supabase.from("schemes").select("id, name"),
   ]);
 
   return {
@@ -176,11 +182,11 @@ export async function getUpdates() {
   };
 }
 
-// ─── Capital account statement — dashboard/capital-account/page.tsx ───────────
+// ─── Capital account statement ────────────────────────────────────────────────
 
 export async function getCapitalAccountData() {
   const ctx = await resolveInvestorId();
-  if (!ctx) return null;
+  if (!ctx || "noSession" in ctx || "noRecord" in ctx) return null;
   const { supabase, investorId } = ctx;
 
   const supabaseRaw = createClient();
@@ -197,23 +203,16 @@ export async function getCapitalAccountData() {
   const [investmentsRes, cashFlowsRes] = await Promise.all([
     supabase
       .from("investments")
-      .select(`
-        id, committed, deployed, current_value, moic,
-        schemes ( id, name, sector )
-      `)
+      .select(`id, committed, deployed, current_value, moic, schemes ( id, name, sector )`)
       .eq("investor_id", investorId),
 
     supabase
       .from("cash_flows")
-      .select(`
-        id, direction, amount, date, notes,
-        schemes ( id, name )
-      `)
+      .select(`id, direction, amount, date, notes, schemes ( id, name )`)
       .eq("investor_id", investorId)
       .order("date", { ascending: true }),
   ]);
 
-  // Compute per-scheme distributions from cash_flows
   const distributionByScheme: Record<string, number> = {};
   for (const cf of cashFlowsRes.data ?? []) {
     if (cf.direction === "distribution") {
@@ -227,27 +226,20 @@ export async function getCapitalAccountData() {
     distributions: distributionByScheme[schemeId(inv.schemes)] ?? 0,
   }));
 
-  return {
-    investor,
-    investments,
-    cashFlows: cashFlowsRes.data ?? [],
-  };
+  return { investor, investments, cashFlows: cashFlowsRes.data ?? [] };
 }
 
-// ─── Portfolio detail — dashboard/portfolio/[id]/page.tsx ────────────────────
+// ─── Portfolio detail ─────────────────────────────────────────────────────────
 
 export async function getInvestmentDetail(schemeId: string) {
   const ctx = await resolveInvestorId();
-  if (!ctx) return null;
+  if (!ctx || "noSession" in ctx || "noRecord" in ctx) return null;
   const { supabase, investorId } = ctx;
 
   const [investmentRes, schemeRes, cashFlowsRes, updatesRes] = await Promise.all([
     supabase
       .from("investments")
-      .select(`
-        id, committed, deployed, current_value, moic, ownership_pct, entry_valuation,
-        schemes ( id, name, sector, stage, entry_date )
-      `)
+      .select(`id, committed, deployed, current_value, moic, ownership_pct, entry_valuation, schemes ( id, name, sector, stage, entry_date )`)
       .eq("investor_id", investorId)
       .eq("scheme_id", schemeId)
       .single(),
