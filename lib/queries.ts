@@ -23,10 +23,10 @@ async function resolveInvestorId(): Promise<
   return { supabase, investorId: investor.id };
 }
 
-// ─── Helper: extract id from a Supabase joined scheme (always returns array) ──
+// ─── Helper: extract id from a Supabase joined scheme (single object, N:1) ───
 
 function schemeId(schemes: unknown): string {
-  return (schemes as Array<{ id: string }> | null)?.[0]?.id ?? "";
+  return (schemes as { id: string } | null)?.id ?? "";
 }
 
 // ─── Investor profile ─────────────────────────────────────────────────────────
