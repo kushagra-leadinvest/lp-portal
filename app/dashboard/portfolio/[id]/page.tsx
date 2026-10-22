@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { getInvestmentDetail } from "@/lib/queries";
@@ -29,6 +30,22 @@ export default async function PortfolioDetailPage({
   const gainPct     = gain !== null && deployed > 0 ? (gain / deployed) * 100 : null;
   const calledPct   = committed > 0 ? (called / committed) * 100 : 0;
   const deployedPct = committed > 0 ? (deployed / committed) * 100 : 0;
+
+  let drawdownLabel: ReactNode;
+  if (uncalled <= 0) {
+    if (uninvested > 0) {
+      drawdownLabel = <p>Fully called · {inr(uninvested)} in fund account, not yet wired to startup</p>;
+    } else {
+      drawdownLabel = <p>Fully called and deployed · Speak to your RM about future opportunities</p>;
+    }
+  } else {
+    drawdownLabel = (
+      <>
+        <span>{inr(called)} called ({inr(deployed)} deployed)</span>
+        <span>{inr(uncalled)} uncalled</span>
+      </>
+    );
+  }
 
   return (
     <div className="min-h-full flex flex-col">
@@ -98,16 +115,7 @@ export default async function PortfolioDetailPage({
             />
           </div>
           <div className="mt-1.5 flex justify-between text-[11px] text-gray-400">
-            {uncalled <= 0 ? (
-              uninvested > 0
-                ? <p>Fully called · {inr(uninvested)} in fund account, not yet wired</p>
-                : <p>Fully called and deployed · Speak to your relationship manager about future opportunities</p>
-            ) : (
-              <>
-                <span>{inr(called)} called ({inr(deployed)} deployed)</span>
-                <span>{inr(uncalled)} uncalled</span>
-              </>
-            )}
+            {drawdownLabel}
           </div>
         </div>
 
@@ -161,9 +169,7 @@ export default async function PortfolioDetailPage({
                   <tr key={cf.id} className="hover:bg-gray-50/60 transition-colors">
                     <td className="px-4 py-3 text-xs text-gray-500 font-mono">{formatDate(cf.date)}</td>
                     <td className="px-4 py-3">
-                      <span className={`inline-flex text-xs px-2 py-0.5 rounded-full font-medium ${
-                        cf.direction === "call" ? "bg-red-50 text-red-700" : "bg-green-50 text-green-700"
-                      }`}>
+                      <span className={`inline-flex text-xs px-2 py-0.5 rounded-full font-medium ${cf.direction === "call" ? "bg-red-50 text-red-700" : "bg-green-50 text-green-700"}`}>
                         {cf.direction === "call" ? "Capital call" : "Distribution"}
                       </span>
                     </td>
@@ -237,9 +243,36 @@ export default async function PortfolioDetailPage({
 }
 
 function DetailCard({
-  label, value, sub, highlight, muted,
+  label,
+  value,
+  sub,
+  highlight,
+  muted,
 }: {
-  label: string; value: string; sub?: React.ReactNode; highlight?: boolean; muted?: boolean;
+  label: string;
+  value: string;
+  sub?: ReactNode;
+  highlight?: boolean;
+  muted?: boolean;
 }) {
   return (
-    <div
+    <div className={`rounded-xl border px-5 py-4 ${highlight ? "bg-[#8B1A1A] border-[#8B1A1A]" : "bg-white border-gray-200"}`}>
+      <p className={`text-xs font-medium mb-1 ${highlight ? "text-white/70" : "text-gray-500"}`}>{label}</p>
+      <p className={`font-semibold tracking-tight ${highlight ? "text-white text-xl" : muted ? "text-gray-400 text-sm italic" : "text-gray-900 text-xl"}`}>
+        {value}
+      </p>
+      {sub && (
+        <p className={`text-[11px] mt-1 ${highlight ? "text-white/60" : "text-gray-400"}`}>{sub}</p>
+      )}
+    </div>
+  );
+}
+
+function MetricBadge({ label, value, muted }: { label: string; value: string; muted?: boolean }) {
+  return (
+    <div className="bg-white border border-gray-200 rounded-xl px-5 py-3 flex items-center justify-between">
+      <span className="text-xs text-gray-500">{label}</span>
+      <span className={`text-sm font-semibold ${muted ? "text-gray-400 italic text-xs font-normal" : "text-gray-900"}`}>{value}</span>
+    </div>
+  );
+}
