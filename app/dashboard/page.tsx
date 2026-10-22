@@ -23,20 +23,14 @@ type CallRow = {
   schemes: { id: string; name: string } | null;
 };
 
-// Per-startup bar: just committed vs deployed (one-shot capital call model)
 function CommitmentBar({ committed, deployed }: { committed: number; deployed: number }) {
-  const deployedPct = committed > 0 ? (deployed / committed) * 100 : 0;
-  const undeployed = committed - deployed;
+  const deployedPct = committed > 0 ? (deployed / committed) * 100 : 100;
   return (
     <div>
       <div className="h-1 bg-gray-100 rounded-full overflow-hidden mb-1">
         <div className="h-1 bg-[#8B1A1A] rounded-full" style={{ width: `${Math.min(deployedPct, 100)}%` }} />
       </div>
-      {undeployed <= 0 ? (
-        <p className="text-[10px] text-gray-400">Fully deployed · {inr(deployed)} wired to startup</p>
-      ) : (
-        <p className="text-[10px] text-gray-400">{inr(deployed)} deployed · {inr(undeployed)} remaining</p>
-      )}
+      <p className="text-[10px] text-gray-400">{inr(committed)} committed · {inr(deployed)} deployed to startup</p>
     </div>
   );
 }
@@ -105,7 +99,6 @@ export default async function DashboardPage() {
               />
             </div>
 
-            {/* Fund-level drawdown: called (light) vs deployed (dark) makes sense here */}
             <div className="bg-white border border-gray-200 rounded-xl px-5 py-4 mb-4">
               <div className="flex justify-between text-xs text-gray-500 mb-2">
                 <span>Capital drawdown</span>
@@ -228,7 +221,6 @@ export default async function DashboardPage() {
                         </td>
                         <td className="px-4 py-3 text-gray-500 text-xs">{scheme?.sector ?? "—"}</td>
                         <td className="px-4 py-3 min-w-[200px]">
-                          {/* Simple bar: committed vs deployed — per-startup calls are one-shot */}
                           <CommitmentBar committed={committed} deployed={deployed} />
                         </td>
                         <td className="px-4 py-3 text-right font-mono text-xs text-gray-700">
