@@ -18,14 +18,17 @@ export default async function PortfolioDetailPage({
   const currentValue = investment.current_value !== null ? Number(investment.current_value) : null;
   const deployed    = Number(investment.deployed);
   const committed   = Number(investment.committed);
-  const undrawn     = committed - deployed;
+  const called      = Number(investment.called ?? 0);
+  const uncalled    = committed - called;
+  const uninvested  = called - deployed;
   const moic        = investment.moic !== null
     ? Number(investment.moic)
     : (currentValue !== null && deployed > 0 ? currentValue / deployed : 1);
   const dpi         = deployed > 0 ? distributions / deployed : 0;
   const gain        = currentValue !== null ? currentValue - deployed : null;
   const gainPct     = gain !== null && deployed > 0 ? (gain / deployed) * 100 : null;
-  const drawdownPct = committed > 0 ? (deployed / committed) * 100 : 0;
+  const calledPct   = committed > 0 ? (called / committed) * 100 : 0;
+  const deployedPct = committed > 0 ? (deployed / committed) * 100 : 0;
 
   return (
     <div className="min-h-full flex flex-col">
@@ -59,13 +62,8 @@ export default async function PortfolioDetailPage({
         </h2>
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
           <DetailCard label="Committed" value={short(committed)} sub={inr(committed)} />
-          <DetailCard label="Deployed" value={short(deployed)} sub={inr(deployed)} />
-          <DetailCard
-            label="Undrawn"
-            value={undrawn <= 0 ? "Fully deployed" : short(undrawn)}
-            sub={undrawn <= 0 ? undefined : inr(undrawn)}
-            muted={undrawn <= 0}
-          />
+          <DetailCard label="Called" value={short(called)} sub={inr(called)} />
+          <DetailCard label="Deployed to Startup" value={short(deployed)} sub={inr(deployed)} />
           {currentValue !== null ? (
             <DetailCard
               label="Current Value"
@@ -87,21 +85,27 @@ export default async function PortfolioDetailPage({
         <div className="bg-white border border-gray-200 rounded-xl px-5 py-4 mb-4">
           <div className="flex justify-between text-xs text-gray-500 mb-1.5">
             <span>Capital drawdown</span>
-            <span className="font-medium text-gray-700">{drawdownPct.toFixed(1)}% drawn</span>
+            <span className="font-medium text-gray-700">{calledPct.toFixed(1)}% called · {deployedPct.toFixed(1)}% deployed</span>
           </div>
-          <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+          <div className="h-2 bg-gray-100 rounded-full overflow-hidden relative">
             <div
-              className="h-2 bg-[#8B1A1A] rounded-full transition-all"
-              style={{ width: `${Math.min(drawdownPct, 100)}%` }}
+              className="h-2 bg-[#8B1A1A]/25 rounded-full absolute transition-all"
+              style={{ width: `${Math.min(calledPct, 100)}%` }}
+            />
+            <div
+              className="h-2 bg-[#8B1A1A] rounded-full absolute transition-all"
+              style={{ width: `${Math.min(deployedPct, 100)}%` }}
             />
           </div>
           <div className="mt-1.5 flex justify-between text-[11px] text-gray-400">
-            {undrawn <= 0 ? (
-              <p>Fully deployed · Speak to your relationship manager about future opportunities</p>
+            {uncalled <= 0 ? (
+              uninvested > 0
+                ? <p>Fully called · {inr(uninvested)} in fund account, not yet wired</p>
+                : <p>Fully called and deployed · Speak to your relationship manager about future opportunities</p>
             ) : (
               <>
-                <span>{inr(deployed)} deployed</span>
-                <span>{inr(undrawn)} remaining</span>
+                <span>{inr(called)} called ({inr(deployed)} deployed)</span>
+                <span>{inr(uncalled)} uncalled</span>
               </>
             )}
           </div>
@@ -238,23 +242,4 @@ function DetailCard({
   label: string; value: string; sub?: React.ReactNode; highlight?: boolean; muted?: boolean;
 }) {
   return (
-    <div className={`rounded-xl border px-5 py-4 ${highlight ? "bg-[#8B1A1A] border-[#8B1A1A]" : "bg-white border-gray-200"}`}>
-      <p className={`text-xs font-medium mb-1 ${highlight ? "text-white/70" : "text-gray-500"}`}>{label}</p>
-      <p className={`font-semibold tracking-tight ${highlight ? "text-white text-xl" : muted ? "text-gray-400 text-sm italic" : "text-gray-900 text-xl"}`}>
-        {value}
-      </p>
-      {sub && (
-        <p className={`text-[11px] mt-1 ${highlight ? "text-white/60" : "text-gray-400"}`}>{sub}</p>
-      )}
-    </div>
-  );
-}
-
-function MetricBadge({ label, value, muted }: { label: string; value: string; muted?: boolean }) {
-  return (
-    <div className="bg-white border border-gray-200 rounded-xl px-5 py-3 flex items-center justify-between">
-      <span className="text-xs text-gray-500">{label}</span>
-      <span className={`text-sm font-semibold ${muted ? "text-gray-400 italic text-xs font-normal" : "text-gray-900"}`}>{value}</span>
-    </div>
-  );
-}
+    <div
