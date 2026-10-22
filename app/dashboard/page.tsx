@@ -23,28 +23,19 @@ type CallRow = {
   schemes: { id: string; name: string } | null;
 };
 
-function CommitmentBar({
-  committed,
-  called,
-  deployed,
-}: {
-  committed: number;
-  called: number;
-  deployed: number;
-}) {
-  const uncalled = committed - called;
-  const calledPct = committed > 0 ? (called / committed) * 100 : 0;
+// Per-startup bar: just committed vs deployed (one-shot capital call model)
+function CommitmentBar({ committed, deployed }: { committed: number; deployed: number }) {
   const deployedPct = committed > 0 ? (deployed / committed) * 100 : 0;
+  const undeployed = committed - deployed;
   return (
     <div>
-      <div className="h-1 bg-gray-100 rounded-full overflow-hidden mb-1 relative">
-        <div className="h-1 bg-[#8B1A1A]/25 rounded-full absolute" style={{ width: `${Math.min(calledPct, 100)}%` }} />
-        <div className="h-1 bg-[#8B1A1A] rounded-full absolute" style={{ width: `${Math.min(deployedPct, 100)}%` }} />
+      <div className="h-1 bg-gray-100 rounded-full overflow-hidden mb-1">
+        <div className="h-1 bg-[#8B1A1A] rounded-full" style={{ width: `${Math.min(deployedPct, 100)}%` }} />
       </div>
-      {uncalled <= 0 ? (
-        <p className="text-[10px] text-gray-400">Fully called · {inr(deployed)} deployed to startup</p>
+      {undeployed <= 0 ? (
+        <p className="text-[10px] text-gray-400">Fully deployed · {inr(deployed)} wired to startup</p>
       ) : (
-        <p className="text-[10px] text-gray-400">{inr(called)} called, {inr(deployed)} deployed, {inr(uncalled)} uncalled</p>
+        <p className="text-[10px] text-gray-400">{inr(deployed)} deployed · {inr(undeployed)} remaining</p>
       )}
     </div>
   );
@@ -114,6 +105,7 @@ export default async function DashboardPage() {
               />
             </div>
 
+            {/* Fund-level drawdown: called (light) vs deployed (dark) makes sense here */}
             <div className="bg-white border border-gray-200 rounded-xl px-5 py-4 mb-4">
               <div className="flex justify-between text-xs text-gray-500 mb-2">
                 <span>Capital drawdown</span>
@@ -220,7 +212,6 @@ export default async function DashboardPage() {
                     const currentValue = inv.current_value !== null ? Number(inv.current_value) : null;
                     const deployed = Number(inv.deployed);
                     const committed = Number(inv.committed);
-                    const called = Number(inv.called ?? 0);
                     const moic = inv.moic !== null
                       ? Number(inv.moic)
                       : (currentValue !== null && deployed > 0 ? currentValue / deployed : 1);
@@ -236,8 +227,9 @@ export default async function DashboardPage() {
                           <p className="text-[11px] text-gray-400">{scheme?.entry_date ? formatDate(scheme.entry_date) : "—"}</p>
                         </td>
                         <td className="px-4 py-3 text-gray-500 text-xs">{scheme?.sector ?? "—"}</td>
-                        <td className="px-4 py-3 min-w-[220px]">
-                          <CommitmentBar committed={committed} called={called} deployed={deployed} />
+                        <td className="px-4 py-3 min-w-[200px]">
+                          {/* Simple bar: committed vs deployed — per-startup calls are one-shot */}
+                          <CommitmentBar committed={committed} deployed={deployed} />
                         </td>
                         <td className="px-4 py-3 text-right font-mono text-xs text-gray-700">
                           {currentValue !== null ? inr(currentValue) : <span className="text-gray-400 italic font-sans">Valuation pending</span>}
@@ -266,7 +258,7 @@ export default async function DashboardPage() {
                         <div className="h-1 bg-[#8B1A1A]/25 rounded-full absolute" style={{ width: `${Math.min(calledPct, 100)}%` }} />
                         <div className="h-1 bg-[#8B1A1A] rounded-full absolute" style={{ width: `${Math.min(deployedPct, 100)}%` }} />
                       </div>
-                      <p className="text-[10px] text-gray-400">{inr(totalCalled)} called, {inr(stats.totalDeployed)} deployed</p>
+                      <p className="text-[10px] text-gray-400">{inr(totalCalled)} called · {inr(stats.totalDeployed)} deployed</p>
                     </td>
                     <td className="px-4 py-3 text-right font-mono text-xs text-gray-700">{inr(stats.totalCurrentValue)}</td>
                     <td className="px-4 py-3 text-right text-xs">
@@ -309,23 +301,11 @@ function EmptyState({ message }: { message: string }) {
   );
 }
 
-function SummaryCard({
-  label,
-  value,
-  sub,
-  highlight,
-  muted,
-}: {
-  label: string;
-  value: string;
-  sub?: ReactNode;
-  highlight?: boolean;
-  muted?: boolean;
-}) {
+function SummaryCard({ label, value, sub, highlight }: { label: string; value: string; sub?: ReactNode; highlight?: boolean }) {
   return (
     <div className={`rounded-xl border px-5 py-4 ${highlight ? "bg-[#8B1A1A] border-[#8B1A1A]" : "bg-white border-gray-200"}`}>
       <p className={`text-xs font-medium mb-1 ${highlight ? "text-white/70" : "text-gray-500"}`}>{label}</p>
-      <p className={`text-xl font-semibold tracking-tight ${highlight ? "text-white" : muted ? "text-gray-400" : "text-gray-900"}`}>{value}</p>
+      <p className={`text-xl font-semibold tracking-tight ${highlight ? "text-white" : "text-gray-900"}`}>{value}</p>
       {sub && <p className={`text-[11px] mt-1 ${highlight ? "text-white/60" : "text-gray-400"}`}>{sub}</p>}
     </div>
   );
