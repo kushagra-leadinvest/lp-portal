@@ -1,11 +1,9 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 
 export default function AdminMfaEnrollPage() {
-  const router = useRouter();
   const [qrCode, setQrCode] = useState<string | null>(null);
   const [secret, setSecret] = useState<string | null>(null);
   const [factorId, setFactorId] = useState<string | null>(null);
@@ -45,6 +43,7 @@ export default function AdminMfaEnrollPage() {
 
       if (challengeError || !challenge) {
         setError("Challenge failed. Please try again.");
+        setLoading(false);
         return;
       }
 
@@ -56,14 +55,13 @@ export default function AdminMfaEnrollPage() {
 
       if (verifyError) {
         setError("Incorrect code. Please check your authenticator and try again.");
+        setLoading(false);
         return;
       }
 
-      router.push("/admin");
-      router.refresh();
+      window.location.href = "/admin";
     } catch {
       setError("Something went wrong. Please try again.");
-    } finally {
       setLoading(false);
     }
   };
@@ -71,7 +69,7 @@ export default function AdminMfaEnrollPage() {
   const handleSignOut = async () => {
     const supabase = createClient();
     await supabase.auth.signOut();
-    router.push("/admin/login");
+    window.location.href = "/admin/login";
   };
 
   return (
