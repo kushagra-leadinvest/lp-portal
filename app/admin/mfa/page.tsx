@@ -1,11 +1,9 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 
 export default function AdminMfaPage() {
-  const router = useRouter();
   const [code, setCode] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -34,6 +32,7 @@ export default function AdminMfaPage() {
 
       if (challengeError || !challenge) {
         setError("Could not start MFA challenge. Please sign in again.");
+        setLoading(false);
         return;
       }
 
@@ -45,14 +44,13 @@ export default function AdminMfaPage() {
 
       if (verifyError) {
         setError("Incorrect code. Please try again.");
+        setLoading(false);
         return;
       }
 
-      router.push("/admin");
-      router.refresh();
+      window.location.href = "/admin";
     } catch {
       setError("Something went wrong. Please try again.");
-    } finally {
       setLoading(false);
     }
   };
@@ -60,7 +58,7 @@ export default function AdminMfaPage() {
   const handleSignOut = async () => {
     const supabase = createClient();
     await supabase.auth.signOut();
-    router.push("/admin/login");
+    window.location.href = "/admin/login";
   };
 
   return (
