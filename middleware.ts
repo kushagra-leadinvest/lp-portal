@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@supabase/ssr";
+import { createClient } from "@supabase/supabase-js";
 
 type CookieToSet = { name: string; value: string; options?: Record<string, unknown> };
 
@@ -37,10 +38,7 @@ export async function middleware(request: NextRequest) {
 
   // ── /admin/* routes ──────────────────────────────────────────────────
   if (pathname.startsWith("/admin")) {
-    if (
-      pathname === "/admin/login" ||
-      pathname.startsWith("/admin/mfa")
-    ) {
+    if (pathname === "/admin/login" || pathname.startsWith("/admin/mfa")) {
       return response;
     }
 
@@ -52,14 +50,19 @@ export async function middleware(request: NextRequest) {
     if (aal?.currentLevel !== "aal2") {
       const { data: factors } = await supabase.auth.mfa.listFactors();
       const hasTotp = factors?.totp && factors.totp.length > 0;
-      if (hasTotp) {
-        return NextResponse.redirect(new URL("/admin/mfa", request.url));
-      } else {
-        return NextResponse.redirect(new URL("/admin/mfa/enroll", request.url));
-      }
+      return NextResponse.redirect(
+        new URL(hasTotp ? "/admin/mfa" : "/admin/mfa/enroll", request.url)
+      );
     }
 
-    const { data: adminUser } = await supabase
+    // Use service role to bypass RLS for the admin_users check
+    const adminDb = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!,
+      { auth: { autoRefreshToken: false, persistSession: false } }
+    );
+
+    const { data: adminUser } = await adminDb
       .from("admin_users")
       .select("is_active")
       .eq("auth_user_id", user.id)
