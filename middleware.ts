@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 
+type CookieToSet = { name: string; value: string; options?: Record<string, unknown> };
+
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
@@ -16,13 +18,13 @@ export async function middleware(request: NextRequest) {
         getAll() {
           return request.cookies.getAll();
         },
-        setAll(cookiesToSet) {
+        setAll(cookiesToSet: CookieToSet[]) {
           cookiesToSet.forEach(({ name, value }) =>
             request.cookies.set(name, value)
           );
           response = NextResponse.next({ request });
           cookiesToSet.forEach(({ name, value, options }) =>
-            response.cookies.set(name, value, options)
+            response.cookies.set(name, value, options as Parameters<typeof response.cookies.set>[2])
           );
         },
       },
@@ -35,7 +37,6 @@ export async function middleware(request: NextRequest) {
 
   // ── /admin/* routes ──────────────────────────────────────────────────
   if (pathname.startsWith("/admin")) {
-    // Let login/mfa pages through unauthenticated
     if (
       pathname === "/admin/login" ||
       pathname.startsWith("/admin/mfa")
@@ -43,15 +44,12 @@ export async function middleware(request: NextRequest) {
       return response;
     }
 
-    // Must be signed in
     if (!user) {
       return NextResponse.redirect(new URL("/admin/login", request.url));
     }
 
-    // Must have MFA (AAL2)
     const { data: aal } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
     if (aal?.currentLevel !== "aal2") {
-      // Check if they have a TOTP factor enrolled
       const { data: factors } = await supabase.auth.mfa.listFactors();
       const hasTotp = factors?.totp && factors.totp.length > 0;
       if (hasTotp) {
@@ -61,7 +59,6 @@ export async function middleware(request: NextRequest) {
       }
     }
 
-    // Check admin_users table
     const { data: adminUser } = await supabase
       .from("admin_users")
       .select("is_active")
@@ -82,7 +79,6 @@ export async function middleware(request: NextRequest) {
       return NextResponse.redirect(new URL("/login", request.url));
     }
 
-    // Check if LP account is active
     const { data: investor } = await supabase
       .from("investors")
       .select("is_active")
