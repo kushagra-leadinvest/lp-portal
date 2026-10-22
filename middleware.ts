@@ -1,8 +1,12 @@
-import { createServerClient, type CookieOptions } from '@supabase/ssr'
-import { NextResponse, type NextRequest } from 'next/server'
+import { NextRequest, NextResponse } from "next/server";
+import { createServerClient } from "@supabase/ssr";
 
 export async function middleware(request: NextRequest) {
-  let supabaseResponse = NextResponse.next({ request })
+  const { pathname } = request.nextUrl;
+
+  let response = NextResponse.next({
+    request: { headers: request.headers },
+  });
 
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -10,32 +14,91 @@ export async function middleware(request: NextRequest) {
     {
       cookies: {
         getAll() {
-          return request.cookies.getAll()
+          return request.cookies.getAll();
         },
-        setAll(cookiesToSet: { name: string; value: string; options: CookieOptions }[]) {
+        setAll(cookiesToSet) {
           cookiesToSet.forEach(({ name, value }) =>
             request.cookies.set(name, value)
-          )
-          supabaseResponse = NextResponse.next({ request })
+          );
+          response = NextResponse.next({ request });
           cookiesToSet.forEach(({ name, value, options }) =>
-            supabaseResponse.cookies.set(name, value, options)
-          )
+            response.cookies.set(name, value, options)
+          );
         },
       },
     }
-  )
+  );
 
-  const { data: { user } } = await supabase.auth.getUser()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
 
-  if (!user && request.nextUrl.pathname.startsWith('/dashboard')) {
-    const url = request.nextUrl.clone()
-    url.pathname = '/login'
-    return NextResponse.redirect(url)
+  // ── /admin/* routes ──────────────────────────────────────────────────
+  if (pathname.startsWith("/admin")) {
+    // Let login/mfa pages through unauthenticated
+    if (
+      pathname === "/admin/login" ||
+      pathname.startsWith("/admin/mfa")
+    ) {
+      return response;
+    }
+
+    // Must be signed in
+    if (!user) {
+      return NextResponse.redirect(new URL("/admin/login", request.url));
+    }
+
+    // Must have MFA (AAL2)
+    const { data: aal } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+    if (aal?.currentLevel !== "aal2") {
+      // Check if they have a TOTP factor enrolled
+      const { data: factors } = await supabase.auth.mfa.listFactors();
+      const hasTotp = factors?.totp && factors.totp.length > 0;
+      if (hasTotp) {
+        return NextResponse.redirect(new URL("/admin/mfa", request.url));
+      } else {
+        return NextResponse.redirect(new URL("/admin/mfa/enroll", request.url));
+      }
+    }
+
+    // Check admin_users table
+    const { data: adminUser } = await supabase
+      .from("admin_users")
+      .select("is_active")
+      .eq("auth_user_id", user.id)
+      .single();
+
+    if (!adminUser || !adminUser.is_active) {
+      await supabase.auth.signOut();
+      return NextResponse.redirect(new URL("/admin/login", request.url));
+    }
+
+    return response;
   }
 
-  return supabaseResponse
+  // ── /dashboard/* routes ──────────────────────────────────────────────
+  if (pathname.startsWith("/dashboard")) {
+    if (!user) {
+      return NextResponse.redirect(new URL("/login", request.url));
+    }
+
+    // Check if LP account is active
+    const { data: investor } = await supabase
+      .from("investors")
+      .select("is_active")
+      .eq("auth_user_id", user.id)
+      .single();
+
+    if (investor && investor.is_active === false) {
+      return NextResponse.redirect(new URL("/suspended", request.url));
+    }
+
+    return response;
+  }
+
+  return response;
 }
 
 export const config = {
-  matcher: ['/dashboard/:path*'],
-}
+  matcher: ["/admin/:path*", "/dashboard/:path*"],
+};
