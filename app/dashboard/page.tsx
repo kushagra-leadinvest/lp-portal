@@ -225,10 +225,12 @@ export default async function DashboardPage() {
                               {diff >= 0 ? "+" : ""}{inr(diff)}<br />
                               <span className="text-[11px] opacity-80">({diffPct >= 0 ? "+" : ""}{diffPct.toFixed(1)}%)</span>
                             </span>
-                          ) : <span className="text-gray-400">–</span>}
+                          ) : <span className="text-gray-400">—</span>}
                         </td>
                         <td className="px-4 py-3 text-right text-xs font-medium">
-                          <span className={moic >= 1 ? "text-green-700" : "text-red-600"}>{moic.toFixed(2)}x</span>
+                          {currentValue !== null
+                            ? <span className={moic >= 1 ? "text-green-700" : "text-red-600"}>{moic.toFixed(2)}x</span>
+                            : <span className="text-gray-400">—</span>}
                         </td>
                         <td className="px-4 py-3 text-right text-xs text-gray-500">{dpi.toFixed(2)}x</td>
                       </tr>
