@@ -21,7 +21,7 @@ export default async function PortfolioDetailPage({
   const undrawn     = committed - deployed;
   const moic        = investment.moic !== null
     ? Number(investment.moic)
-    : (currentValue !== null && deployed > 0 ? currentValue / deployed : 0);
+    : (currentValue !== null && deployed > 0 ? currentValue / deployed : 1);
   const dpi         = deployed > 0 ? distributions / deployed : 0;
   const gain        = currentValue !== null ? currentValue - deployed : null;
   const gainPct     = gain !== null && deployed > 0 ? (gain / deployed) * 100 : null;
