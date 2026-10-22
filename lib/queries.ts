@@ -69,7 +69,7 @@ export async function getPortfolioData(): Promise<PortfolioDataResult> {
     supabase
       .from("investments")
       .select(`
-        id, committed, deployed, current_value, moic, ownership_pct, entry_valuation,
+        id, committed, called, deployed, current_value, moic, ownership_pct, entry_valuation,
         schemes ( id, name, sector, stage, entry_date )
       `)
       .eq("investor_id", investorId),
@@ -239,7 +239,7 @@ export async function getInvestmentDetail(schemeId: string) {
   const [investmentRes, schemeRes, cashFlowsRes, updatesRes] = await Promise.all([
     supabase
       .from("investments")
-      .select(`id, committed, deployed, current_value, moic, ownership_pct, entry_valuation, schemes ( id, name, sector, stage, entry_date )`)
+      .select(`id, committed, called, deployed, current_value, moic, ownership_pct, entry_valuation, schemes ( id, name, sector, stage, entry_date )`)
       .eq("investor_id", investorId)
       .eq("scheme_id", schemeId)
       .single(),
