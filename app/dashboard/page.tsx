@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getPortfolioData } from "@/lib/queries";
@@ -15,9 +16,22 @@ type InvRow = {
   moic: string | number | null;
   schemes: SchemeRef | null;
 };
-type CallRow = { id: string; amount: string | number; due_date: string | null; schemes: { id: string; name: string } | null };
+type CallRow = {
+  id: string;
+  amount: string | number;
+  due_date: string | null;
+  schemes: { id: string; name: string } | null;
+};
 
-function CommitmentBar({ committed, called, deployed }: { committed: number; called: number; deployed: number }) {
+function CommitmentBar({
+  committed,
+  called,
+  deployed,
+}: {
+  committed: number;
+  called: number;
+  deployed: number;
+}) {
   const uncalled = committed - called;
   const calledPct = committed > 0 ? (called / committed) * 100 : 0;
   const deployedPct = committed > 0 ? (deployed / committed) * 100 : 0;
@@ -28,7 +42,7 @@ function CommitmentBar({ committed, called, deployed }: { committed: number; cal
         <div className="h-1 bg-[#8B1A1A] rounded-full absolute" style={{ width: `${Math.min(deployedPct, 100)}%` }} />
       </div>
       {uncalled <= 0 ? (
-        <p className="text-[10px] text-gray-400">Fully called · {inr(deployed)} wired to startup</p>
+        <p className="text-[10px] text-gray-400">Fully called · {inr(deployed)} deployed to startup</p>
       ) : (
         <p className="text-[10px] text-gray-400">{inr(called)} called, {inr(deployed)} deployed, {inr(uncalled)} uncalled</p>
       )}
@@ -38,7 +52,6 @@ function CommitmentBar({ committed, called, deployed }: { committed: number; cal
 
 export default async function DashboardPage() {
   const result = await getPortfolioData();
-
   if (result.status === "no_session") redirect("/login");
 
   if (result.status === "no_record") {
@@ -93,7 +106,7 @@ export default async function DashboardPage() {
                 label="Current Value"
                 value={short(stats.totalCurrentValue)}
                 sub={
-                  <span className={stats.totalGain >= 0 ? "text-green-500" : "text-red-500"}>
+                  <span className={stats.totalGain >= 0 ? "text-green-300" : "text-red-300"}>
                     {stats.totalGain >= 0 ? "+" : ""}{short(stats.totalGain)} ({gainPct >= 0 ? "+" : ""}{gainPct.toFixed(1)}%)
                   </span>
                 }
@@ -208,7 +221,9 @@ export default async function DashboardPage() {
                     const deployed = Number(inv.deployed);
                     const committed = Number(inv.committed);
                     const called = Number(inv.called ?? 0);
-                    const moic = inv.moic !== null ? Number(inv.moic) : (currentValue !== null && deployed > 0 ? currentValue / deployed : 1);
+                    const moic = inv.moic !== null
+                      ? Number(inv.moic)
+                      : (currentValue !== null && deployed > 0 ? currentValue / deployed : 1);
                     const dpi = deployed > 0 ? inv.distributions / deployed : 0;
                     const diff = currentValue !== null ? currentValue - deployed : null;
                     const diffPct = diff !== null && deployed > 0 ? (diff / deployed) * 100 : null;
@@ -294,7 +309,19 @@ function EmptyState({ message }: { message: string }) {
   );
 }
 
-function SummaryCard({ label, value, sub, highlight, muted }: { label: string; value: string; sub?: React.ReactNode; highlight?: boolean; muted?: boolean }) {
+function SummaryCard({
+  label,
+  value,
+  sub,
+  highlight,
+  muted,
+}: {
+  label: string;
+  value: string;
+  sub?: ReactNode;
+  highlight?: boolean;
+  muted?: boolean;
+}) {
   return (
     <div className={`rounded-xl border px-5 py-4 ${highlight ? "bg-[#8B1A1A] border-[#8B1A1A]" : "bg-white border-gray-200"}`}>
       <p className={`text-xs font-medium mb-1 ${highlight ? "text-white/70" : "text-gray-500"}`}>{label}</p>
@@ -313,7 +340,7 @@ function MetricBadge({ label, value, muted }: { label: string; value: string; mu
   );
 }
 
-function Th({ children, align = "right" }: { children: React.ReactNode; align?: "left" | "right" }) {
+function Th({ children, align = "right" }: { children: ReactNode; align?: "left" | "right" }) {
   return (
     <th className={`px-4 py-2.5 text-[11px] font-medium text-gray-500 uppercase tracking-wider ${align === "right" ? "text-right" : "text-left"}`}>
       {children}
