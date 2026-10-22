@@ -12,9 +12,9 @@ type InvRow = {
   distributions: number;
   current_value: string | number | null;
   moic: string | number | null;
-  schemes: SchemeRef[] | null;
+  schemes: SchemeRef | null;
 };
-type CallRow = { id: string; amount: string | number; due_date: string | null; schemes: { id: string; name: string }[] | null };
+type CallRow = { id: string; amount: string | number; due_date: string | null; schemes: { id: string; name: string } | null };
 
 function CommitmentBar({ committed, deployed }: { committed: number; deployed: number }) {
   const undrawn = committed - deployed;
@@ -37,10 +37,8 @@ function CommitmentBar({ committed, deployed }: { committed: number; deployed: n
 export default async function DashboardPage() {
   const result = await getPortfolioData();
 
-  // Only redirect to login if genuinely not authenticated
   if (result.status === "no_session") redirect("/login");
 
-  // Authenticated but no LP record yet — show a holding screen instead of looping to login
   if (result.status === "no_record") {
     return (
       <div className="min-h-full flex flex-col items-center justify-center px-8 py-16 text-center">
@@ -141,7 +139,7 @@ export default async function DashboardPage() {
           <h2 className="text-sm font-semibold text-gray-700 mb-3">Upcoming capital calls</h2>
           <div className="space-y-2">
             {capitalCalls.map((call) => {
-              const scheme = call.schemes?.[0] ?? null;
+              const scheme = call.schemes ?? null;
               return (
                 <div key={call.id} className="bg-white border border-gray-200 rounded-xl px-5 py-4 flex items-center justify-between gap-4">
                   <div>
@@ -200,7 +198,7 @@ export default async function DashboardPage() {
                 </thead>
                 <tbody className="divide-y divide-gray-50">
                   {investments.map((inv) => {
-                    const scheme = inv.schemes?.[0] ?? null;
+                    const scheme = inv.schemes ?? null;
                     const currentValue = inv.current_value !== null ? Number(inv.current_value) : null;
                     const deployed = Number(inv.deployed);
                     const committed = Number(inv.committed);
