@@ -23,18 +23,6 @@ type CallRow = {
   schemes: { id: string; name: string } | null;
 };
 
-function CommitmentBar({ committed, deployed }: { committed: number; deployed: number }) {
-  const deployedPct = committed > 0 ? (deployed / committed) * 100 : 100;
-  return (
-    <div>
-      <div className="h-1 bg-gray-100 rounded-full overflow-hidden mb-1">
-        <div className="h-1 bg-[#8B1A1A] rounded-full" style={{ width: `${Math.min(deployedPct, 100)}%` }} />
-      </div>
-      <p className="text-[10px] text-gray-400">{inr(committed)} committed · {inr(deployed)} deployed to startup</p>
-    </div>
-  );
-}
-
 export default async function DashboardPage() {
   const result = await getPortfolioData();
   if (result.status === "no_session") redirect("/login");
@@ -192,7 +180,7 @@ export default async function DashboardPage() {
                   <tr className="border-b border-gray-100 bg-gray-50/60">
                     <Th align="left">Company</Th>
                     <Th align="left">Sector</Th>
-                    <Th align="left">Commitment</Th>
+                    <Th>Invested</Th>
                     <Th>Current Value</Th>
                     <Th>Gain / Loss</Th>
                     <Th>MOIC</Th>
@@ -204,7 +192,6 @@ export default async function DashboardPage() {
                     const scheme = inv.schemes ?? null;
                     const currentValue = inv.current_value !== null ? Number(inv.current_value) : null;
                     const deployed = Number(inv.deployed);
-                    const committed = Number(inv.committed);
                     const moic = inv.moic !== null
                       ? Number(inv.moic)
                       : (currentValue !== null && deployed > 0 ? currentValue / deployed : 1);
@@ -220,8 +207,9 @@ export default async function DashboardPage() {
                           <p className="text-[11px] text-gray-400">{scheme?.entry_date ? formatDate(scheme.entry_date) : "—"}</p>
                         </td>
                         <td className="px-4 py-3 text-gray-500 text-xs">{scheme?.sector ?? "—"}</td>
-                        <td className="px-4 py-3 min-w-[200px]">
-                          <CommitmentBar committed={committed} deployed={deployed} />
+                        <td className="px-4 py-3 text-right">
+                          <p className="text-xs font-mono text-gray-700">{inr(deployed)}</p>
+                          <p className="text-[10px] text-gray-400 mt-0.5">{short(deployed)}</p>
                         </td>
                         <td className="px-4 py-3 text-right font-mono text-xs text-gray-700">
                           {currentValue !== null ? inr(currentValue) : <span className="text-gray-400 italic font-sans">Valuation pending</span>}
@@ -245,12 +233,9 @@ export default async function DashboardPage() {
                 <tfoot>
                   <tr className="border-t-2 border-gray-200 bg-gray-50/80 font-semibold">
                     <td className="px-4 py-3 text-xs text-gray-700" colSpan={2}>Total</td>
-                    <td className="px-4 py-3">
-                      <div className="h-1 bg-gray-100 rounded-full overflow-hidden mb-1 relative">
-                        <div className="h-1 bg-[#8B1A1A]/25 rounded-full absolute" style={{ width: `${Math.min(calledPct, 100)}%` }} />
-                        <div className="h-1 bg-[#8B1A1A] rounded-full absolute" style={{ width: `${Math.min(deployedPct, 100)}%` }} />
-                      </div>
-                      <p className="text-[10px] text-gray-400">{inr(totalCalled)} called · {inr(stats.totalDeployed)} deployed</p>
+                    <td className="px-4 py-3 text-right">
+                      <p className="text-xs font-mono text-gray-700">{inr(stats.totalDeployed)}</p>
+                      <p className="text-[10px] text-gray-400 mt-0.5">{short(stats.totalDeployed)}</p>
                     </td>
                     <td className="px-4 py-3 text-right font-mono text-xs text-gray-700">{inr(stats.totalCurrentValue)}</td>
                     <td className="px-4 py-3 text-right text-xs">
